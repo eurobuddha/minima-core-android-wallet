@@ -1,0 +1,40 @@
+package org.minimarex.wallet;
+
+import android.view.LayoutInflater;
+import android.view.View;
+
+/** A single tab page. Each tab holds an inflated root view and refreshes from wallet state. */
+public abstract class BaseView {
+
+    protected final MainActivity act;
+    protected final View root;
+
+    public BaseView(MainActivity a, int layoutRes) {
+        act = a;
+        root = LayoutInflater.from(a).inflate(layoutRes, null);
+    }
+
+    /** Build a tab whose root is constructed programmatically (Send / Settings — no XML layout). */
+    public BaseView(MainActivity a, View programmaticRoot) {
+        act = a;
+        root = programmaticRoot;
+    }
+
+    public View getRoot() {
+        return root;
+    }
+
+    @SuppressWarnings("unchecked")
+    protected <T extends View> T find(int id) {
+        return (T) root.findViewById(id);
+    }
+
+    /** Re-render from current wallet state. Always called on the UI thread. */
+    public abstract void refresh();
+
+    /** Called when this tab becomes the visible page (tab selected). Default: no-op. */
+    public void onShown() {}
+
+    /** Called on a new chain block while the app is loaded. Default: no-op. */
+    public void onNewBlock() {}
+}

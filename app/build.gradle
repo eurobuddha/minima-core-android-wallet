@@ -1,0 +1,87 @@
+plugins {
+    alias(libs.plugins.android.application)
+}
+
+android {
+    namespace 'org.minimarex.wallet'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "org.minimarex.wallet"
+        minSdk 28
+        targetSdk 35
+        versionCode 105
+        versionName "0.1.5"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Sign release with the debug keystore, matching the minima-core-android node app.
+            signingConfig signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    testOptions {
+        unitTests.all {
+            testLogging {
+                events "passed", "failed"
+                showStandardStreams = true
+            }
+        }
+    }
+    // The bundled org.minima.* sources ship a jarignore-free duplicate-free tree; nothing to pack.
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/versions/9/OSGI-INF/MANIFEST.MF']
+        }
+    }
+}
+
+dependencies {
+
+    implementation libs.appcompat
+    implementation libs.material
+    implementation libs.activity
+    implementation libs.constraintlayout
+
+    // Minima's TreeKey / Winternitz signer + SHA2/SHA3 digests are pure BouncyCastle.
+    // WinternitzOTSignature/Verify live in the PQC gmss.util package, which was REMOVED from bcprov
+    // 1.71+ (incl. every jdk18on release). minima-core itself signs with bcprov-jdk15on:1.69, so we
+    // pin the SAME artifact here — this guarantees byte-identical WOTS signatures and that an
+    // imported Minima seed reproduces the node's keys exactly. (Deviation from the plan's
+    // "jdk18on recent" note, forced by the gmss removal; jdk15on is pure Java and Android-safe.)
+    implementation 'org.bouncycastle:bcprov-jdk15on:1.69'
+
+    // Encrypted seed + uses persistence (M3 will use seed-derived keys; M0 uses this for the store).
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+
+    // Biometric unlock (convenience layer): BiometricPrompt + AndroidKeyStore-wrapped passphrase.
+    implementation 'androidx.biometric:biometric:1.1.0'
+    // Whole-app foreground/background detection for the auto-lock timeout (config-change safe;
+    // ProcessLifecycleOwner debounces Activity recreate() so a theme toggle is not a "background").
+    implementation 'androidx.lifecycle:lifecycle-process:2.8.7'
+
+    // --- M2: node transport + balances UI (reused from the utxo/minimaSwap app family) ---
+    // Minima Core native IPC SDK (package-broadcast); the non-admin relay to our node.
+    implementation files('libs/minimaapi.aar')
+    // QR code for the Receive screen.
+    implementation 'com.google.zxing:core:3.5.3'
+    // Embedded camera QR scanner for the Send recipient field (self-contained CaptureActivity +
+    // CAMERA permission; no device test in M3 — wired via the ActivityResult API in MainActivity).
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    // SVG token icons (Android's BitmapFactory can't rasterise SVG; many Minima tokens use SVG urls,
+    // and the native Minima mark ships as an SVG in res/raw).
+    implementation 'com.caverock:androidsvg-aar:1.4'
+
+    testImplementation libs.junit
+}

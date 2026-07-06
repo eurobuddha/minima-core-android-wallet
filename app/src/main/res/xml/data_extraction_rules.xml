@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Backup / transfer rules for API 31+.
+
+   SECURITY (C1): the seed-bearing vault blob (wallet_vault_v1.xml) is DELIBERATELY EXCLUDED from BOTH
+   cloud-backup (Auto Backup to the user's Google account) AND device-transfer (direct phone-to-phone).
+   A restored copy could silently re-enable signing at a possibly-STALE WOTS uses counter, risking
+   one-time-key reuse. The ONLY supported seed recovery path is the user-controlled manual encrypted
+   export (Settings -> Export encrypted backup), which is restored and then explicitly attested as
+   up-to-date before signing is re-enabled.
+
+   These rules are INCLUDE-ONLY: only the two seedless keyuses mirrors are backed up, so EVERYTHING
+   else (including wallet_vault_v1.xml) is excluded by default. The two mirrors hold no seed (cannot
+   sign alone) and SeedVault MAX-reconciles them on open/import, so a restore can only raise the WOTS
+   uses counter, never lower it. (No explicit <exclude> is used: lint's FullBackupContent rule forbids
+   excluding a path that is not under an included path, and include-only already excludes the vault.)
+
+   The biometric convenience store (wallet_biometric.xml — an AndroidKeyStore-encrypted copy of the
+   passphrase: ciphertext + IV only) is NOT included, so it is excluded from both cloud-backup and
+   device-transfer; its Keystore key is hardware-bound and non-exportable, so a transferred copy could
+   not decrypt it anyway. The session prefs (wallet_session.xml — the auto-lock timeout choice) hold no
+   secret and are also excluded.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="keyuses_mirror_a.xml"/>
+        <include domain="sharedpref" path="keyuses_mirror_b.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="keyuses_mirror_a.xml"/>
+        <include domain="sharedpref" path="keyuses_mirror_b.xml"/>
+    </device-transfer>
+</data-extraction-rules>

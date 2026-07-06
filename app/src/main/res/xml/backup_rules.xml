@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Android Auto Backup rules (API < 31; API 31+ uses data_extraction_rules.xml).
+
+   SECURITY (C1): the seed-bearing vault blob (wallet_vault_v1.xml) is DELIBERATELY EXCLUDED from cloud
+   backup. A cloud copy can silently restore onto a fresh install and, if trusted, would re-enable
+   signing at a possibly-STALE WOTS uses counter — reusing a one-time key and exposing it. The ONLY
+   supported seed recovery path is the user-controlled manual encrypted export (Settings → Export
+   encrypted backup), which the user restores and then explicitly attests is up to date.
+
+   We still back up the two live keyuses mirrors: they carry NO seed, so on their own they cannot sign,
+   and SeedVault MAX-reconciles them on open/import — a restore can only RAISE the WOTS uses counter,
+   never lower it. This is INCLUDE-ONLY: because only these two files are <include>d, everything else
+   (including the vault blob) is excluded by default. (No explicit <exclude> is used: lint's
+   FullBackupContent rule forbids excluding a path that is not under an included path.)
+
+   The biometric convenience store (wallet_biometric.xml — an AndroidKeyStore-encrypted copy of the
+   passphrase: ciphertext + IV only) is NOT included, so it never leaves the device; its Keystore key is
+   hardware-bound and non-exportable, so a restore elsewhere could not decrypt it anyway. The session
+   prefs (wallet_session.xml — the auto-lock timeout choice) hold no secret and are also excluded.
+-->
+<full-backup-content>
+    <include domain="sharedpref" path="keyuses_mirror_a.xml"/>
+    <include domain="sharedpref" path="keyuses_mirror_b.xml"/>
+</full-backup-content>

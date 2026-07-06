@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Backup is enabled ONLY to carry the seedless live keyuses mirrors (a restore can only raise
+         the WOTS counter, never lower it). The seed-bearing vault blob is EXCLUDED from cloud/device
+         backup (see backup_rules.xml / data_extraction_rules.xml, C1) so a stale copy can never
+         silently restore-and-trust; the manual encrypted export is the sole seed recovery path.
+         Token icon graphics may live at remote/IPFS URLs. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android 11+ package visibility: needed to deliver our targeted (setPackage) IPC
+         broadcasts to the Minima Core node app (non-admin relay). -->
+    <queries>
+        <package android:name="org.minimarex.minimacore" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Utxo"
+        tools:targetApi="31">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
