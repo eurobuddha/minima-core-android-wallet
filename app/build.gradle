@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'org.minimarex.wallet'
+    namespace 'com.eurobuddha.wallet'
     compileSdk 36
 
     defaultConfig {
-        applicationId "org.minimarex.wallet"
+        applicationId "com.eurobuddha.wallet"
         minSdk 28
         targetSdk 35
         versionCode 105
