@@ -177,6 +177,36 @@ public class SeedVault {
         openState(zPhrase, zPassphrase, zBrandNew);
     }
 
+    /**
+     * Import an existing seed, ATTESTING how many one-time (WOTS) signatures it has already made on key
+     * index 0 (this wallet only ever signs with index 0, so a single count fully describes its signing
+     * state). This is the honest import path: a restored wallet almost never starts at 0, and there is no
+     * safe way to derive the count automatically — only the user knows it (from their previous keyuses
+     * backup, or this app's "Signatures used" figure on the old device).
+     *
+     * <p>The attested count is folded into the live counter under the MAX rule
+     * ({@link KeyUses#recordExternalUses}) — it can only RAISE the counter, never lower it — and the vault
+     * is stored {@code trusted=true}, because the user has explicitly stated the count. This is the same
+     * class of user attestation as {@link #confirmBrandNewSeed} (which asserts 0), just with an explicit
+     * value instead of an implicit zero.
+     *
+     * <p><b>Safety:</b> over-stating the count is safe (it merely skips some of the 262,144 one-time
+     * leaves); under-stating it reuses a leaf and exposes the key, so the caller MUST warn the user to
+     * over-estimate when unsure. {@code zIndex0Uses == 0} is the brand-new case (equivalent to
+     * {@code importSeed(..., true)}) and the caller should confirm it explicitly.
+     */
+    public void importSeed(String zPhrase, String zPassphrase, int zIndex0Uses) {
+        if (zIndex0Uses < 0) {
+            throw new IllegalArgumentException("signatures used must be >= 0");
+        }
+        // Raise the live counter for key 0 to the attested count (MAX-on-write: never lowers).
+        mKeyUses.recordExternalUses(0, zIndex0Uses);
+        // currentSnapshot() now reflects the raised count; store trusted (the user explicitly attested it).
+        VaultBlob blob = new VaultBlob(zPhrase, true, currentSnapshot());
+        persist(blob, zPassphrase);
+        openState(zPhrase, zPassphrase, true);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Unlock
     // ---------------------------------------------------------------------------------------------
@@ -234,8 +264,8 @@ public class SeedVault {
         if (!mTrusted) {
             throw new SigningNotAllowedException(
                     "Signing is blocked: the number of signatures already used by this seed is unknown. "
-                  + "Reusing a one-time key EXPOSES it and can lose your funds. Confirm this seed is "
-                  + "brand-new, or import a keyuses backup, before sending.");
+                  + "Reusing a one-time key EXPOSES it and can lose your funds. Enter your signatures-used "
+                  + "count, confirm this seed is brand-new, or import a keyuses backup, before sending.");
         }
     }
 
@@ -277,6 +307,23 @@ public class SeedVault {
         requireOpen();
         mTrusted = true;
         syncKeyUses();
+    }
+
+    /**
+     * Attest, for an already-open but untrusted vault (a bare import left blocked, or a just-restored
+     * backup), the number of one-time signatures key index 0 has already made — then trust + persist.
+     * The count is MAX-folded into the live counter (raise-only), so it can never lower a higher existing
+     * value. Over-stating is safe; under-stating risks a WOTS reuse, so the UI MUST warn accordingly.
+     * This is the Settings-side twin of the numeric {@link #importSeed(String, String, int)}.
+     */
+    public void setStartingKeyUses(int zIndex0Uses) {
+        requireOpen();
+        if (zIndex0Uses < 0) {
+            throw new IllegalArgumentException("signatures used must be >= 0");
+        }
+        mKeyUses.recordExternalUses(0, zIndex0Uses);   // MAX-safe raise
+        mTrusted = true;
+        syncKeyUses();   // persist trusted=true with the raised snapshot
     }
 
     /**

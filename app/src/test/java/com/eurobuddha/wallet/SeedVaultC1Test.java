@@ -126,6 +126,62 @@ public class SeedVaultC1Test {
     }
 
     // =============================================================================================
+    // Numeric import: attesting N used sets the counter to N, trusts, and is immediately signable
+    // =============================================================================================
+    @Test
+    public void importSeed_withUses_setsCounterAndTrusts() {
+        InMemoryKeyUses live = new InMemoryKeyUses();
+        SeedVault vault = new SeedVault(new MemBlobStore(), live);
+
+        vault.importSeed(SEED, PASS, 137);   // user attests 137 signatures already used
+
+        assertTrue("a numeric-import seed is trusted (explicit attestation)", vault.isKeyUsesTrusted());
+        assertEquals("counter starts at the attested count", 137, live.currentUses(0));
+        vault.assertSigningAllowed();   // must NOT throw — signing is enabled from #137
+    }
+
+    // =============================================================================================
+    // Numeric import is MAX-safe: it can RAISE but never LOWER a higher existing counter
+    // (the whole point of the fix — a mistaken low number can't undo a real higher one)
+    // =============================================================================================
+    @Test
+    public void importSeed_withUses_neverLowersCounter() {
+        InMemoryKeyUses live = new InMemoryKeyUses();
+        live.recordExternalUses(0, 500);     // key 0 has genuinely already signed 500 times on this device
+
+        SeedVault vault = new SeedVault(new MemBlobStore(), live);
+        vault.importSeed(SEED, PASS, 3);      // user under-states as 3 by mistake
+
+        assertEquals("a too-low attestation cannot lower the real higher counter", 500, live.currentUses(0));
+        assertTrue(vault.isKeyUsesTrusted());
+    }
+
+    // =============================================================================================
+    // setStartingKeyUses: Settings-side resolution of an untrusted vault via a typed count
+    // =============================================================================================
+    @Test
+    public void setStartingKeyUses_raisesAndTrusts() throws Exception {
+        InMemoryKeyUses live = new InMemoryKeyUses();
+        SeedVault vault = new SeedVault(new MemBlobStore(), live);
+
+        // Arrive at an untrusted, blocked vault the normal way: a restore.
+        LinkedHashMap<Integer, Integer> snap = new LinkedHashMap<>();
+        snap.put(0, 4);
+        vault.importVault(backupOf(SEED, true, snap), PASS, PASS);
+        assertFalse(vault.isKeyUsesTrusted());
+
+        vault.setStartingKeyUses(42);         // user enters a safe over-estimate in Settings
+
+        assertTrue("typed count trusts the vault", vault.isKeyUsesTrusted());
+        assertEquals("counter raised to the typed count", 42, live.currentUses(0));
+        vault.assertSigningAllowed();
+
+        // And it never lowers: a later smaller number is ignored by the MAX rule.
+        vault.setStartingKeyUses(10);
+        assertEquals("a smaller later number cannot lower the counter", 42, live.currentUses(0));
+    }
+
+    // =============================================================================================
     // createNew remains trusted (freshly generated seed, provably zero prior spends)
     // =============================================================================================
     @Test

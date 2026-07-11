@@ -64,6 +64,7 @@ public class SettingsView extends BaseView {
                   + "either it was imported bare, or it was just restored from a backup that may be stale. "
                   + "Sending is BLOCKED until you resolve this. Reusing a one-time key EXPOSES it and can "
                   + "lose your funds, so choose the option that is TRUE for you:"));
+            container.addView(outlineButton("Enter signatures already used…", v -> setUsesManually()));
             container.addView(dangerButton("This seed is BRAND-NEW (never signed anywhere)", v -> confirmBrandNew()));
             container.addView(dangerButton("This restored backup is my MOST-RECENT state", v -> attestRestored()));
             container.addView(outlineButton("Restore keyuses backup…", v -> restore()));
@@ -145,6 +146,53 @@ public class SettingsView extends BaseView {
     // ---------------------------------------------------------------------------------------------
     // Actions
     // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Resolve an untrusted vault by ENTERING the number of one-time signatures key 0 has already made
+     * (the common case for a restored wallet, which is never really at 0). Raises the counter (MAX-safe)
+     * and enables signing. Over-estimating is safe; under-estimating risks a WOTS reuse, so the copy says
+     * so. Twin of the numeric import path.
+     */
+    private void setUsesManually() {
+        final EditText field = new EditText(act);
+        field.setInputType(InputType.TYPE_CLASS_NUMBER);
+        field.setHint("signatures already used (key 0)");
+        field.setTextColor(Design.text());
+        field.setHintTextColor(Design.dim());
+        final int current = act.keyUses().currentUses(0);
+        new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Signatures already used")
+                .setMessage("How many one-time (WOTS) signatures has this seed already made on this "
+                        + "wallet's key? The counter can only be RAISED (it is " + current + " now).\n\n"
+                        + "Over-estimating is safe — you have " + Util.WOTS_MAX_USES + " signatures in total; "
+                        + "under-estimating reuses a key and can lose your funds. If unsure, over-estimate.")
+                .setView(wrap(field))
+                .setPositiveButton("Set & enable signing", (d, w) -> {
+                    String s = field.getText().toString().trim();
+                    if (s.isEmpty()) {
+                        Toast.makeText(act, "Enter a number", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    final int n;
+                    try {
+                        n = Integer.parseInt(s);
+                    } catch (NumberFormatException e) {
+                        Toast.makeText(act, "Whole number only", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (n < 0 || n >= Util.WOTS_MAX_USES) {
+                        Toast.makeText(act, "Out of range (0 … " + Util.WOTS_MAX_USES + ")",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    act.vault().setStartingKeyUses(n);
+                    Toast.makeText(act, "Signing enabled from signature #" + act.keyUses().currentUses(0),
+                            Toast.LENGTH_LONG).show();
+                    refresh();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
 
     private void confirmBrandNew() {
         new androidx.appcompat.app.AlertDialog.Builder(act)

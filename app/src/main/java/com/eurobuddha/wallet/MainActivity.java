@@ -7,7 +7,6 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -327,15 +326,21 @@ public class MainActivity extends AppCompatActivity {
         final EditText p2 = password();
         col.addView(p2);
 
-        final CheckBox brandNew = new CheckBox(this);
-        brandNew.setText("This seed has NEVER signed a transaction (safe to start uses at 0)");
-        brandNew.setTextColor(Design.text());
-        LinearLayout.LayoutParams cbp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        cbp.topMargin = dp(12); brandNew.setLayoutParams(cbp);
-        col.addView(brandNew);
-        col.addView(body("If you leave this unticked, sending stays BLOCKED until you confirm the seed is "
-                + "new or restore a keyuses backup — this protects against reusing a one-time key."));
+        col.addView(label("SIGNATURES ALREADY USED"));
+        final EditText used = new EditText(this);
+        used.setInputType(InputType.TYPE_CLASS_NUMBER);
+        used.setTextColor(Design.text());
+        used.setHintTextColor(Design.dim());
+        used.setHint("how many — 0 only if brand-new");
+        used.setBackgroundColor(Design.surface());
+        used.setPadding(dp(12), dp(12), dp(12), dp(12));
+        col.addView(used);
+        col.addView(body("How many one-time (WOTS) signatures has this seed already made? A restored "
+                + "wallet almost never starts at 0. Get this number from your previous keyuses backup, or "
+                + "from this app's “Signatures used” figure on your old device.\n\n"
+                + "GOLDEN RULE: over-estimating is safe (you have " + Util.WOTS_MAX_USES + " signatures in "
+                + "total); under-estimating reuses a key and can LOSE your funds. If you are unsure, enter a "
+                + "comfortable over-estimate. Enter 0 only if this seed has NEVER signed anywhere."));
 
         col.addView(primary("Import wallet", v -> {
             String ph = phrase.getText().toString().trim();
@@ -343,10 +348,52 @@ public class MainActivity extends AppCompatActivity {
             String a = p1.getText().toString(), b = p2.getText().toString();
             if (a.length() < 8) { toast("Passphrase too short (min 8)"); return; }
             if (!a.equals(b)) { toast("Passphrases do not match"); return; }
-            mVault.importSeed(ph, a, brandNew.isChecked());
-            mSession.touch();
-            startMain();
+            String usedStr = used.getText().toString().trim();
+            if (usedStr.isEmpty()) {
+                toast("Enter how many signatures this seed has already used (0 only if brand-new)");
+                return;
+            }
+            final int usedN;
+            try {
+                usedN = Integer.parseInt(usedStr);
+            } catch (NumberFormatException nfe) {
+                toast("Signatures used must be a whole number");
+                return;
+            }
+            if (usedN < 0) { toast("Signatures used cannot be negative"); return; }
+            if (usedN >= Util.WOTS_MAX_USES) {
+                toast("That exceeds this key's lifetime of " + Util.WOTS_MAX_USES + " signatures");
+                return;
+            }
+            confirmImport(ph, a, usedN);
         }));
+    }
+
+    /**
+     * Final confirmation before an import commits its attested key-uses count. Echoes the number back and
+     * restates the WOTS golden rule, because under-stating the count reuses a one-time key and can lose
+     * funds. On confirm, {@link SeedVault#importSeed(String, String, int)} raises the counter (MAX-safe)
+     * and stores the vault trusted.
+     */
+    private void confirmImport(String zPhrase, String zPassphrase, int zUsed) {
+        String msg = zUsed == 0
+                ? "You entered 0 signatures used.\n\nOnly correct if this seed has NEVER signed a "
+                    + "transaction on ANY device or wallet. If it has, importing at 0 will reuse one-time "
+                    + "keys and can lose your funds.\n\nImport as a brand-new seed?"
+                : "You are importing with " + zUsed + " signatures already used on this seed.\n\nThe wallet "
+                    + "will sign next from signature #" + zUsed + ". If the true number is HIGHER than this, "
+                    + "a key will be reused and your funds are at risk. Over-estimating is safe; "
+                    + "under-estimating is not.\n\nImport with " + zUsed + " used?";
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Confirm signatures used")
+                .setMessage(msg)
+                .setPositiveButton("Import", (d, w) -> {
+                    mVault.importSeed(zPhrase, zPassphrase, zUsed);
+                    mSession.touch();
+                    startMain();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     // =============================================================================================
@@ -386,6 +433,7 @@ public class MainActivity extends AppCompatActivity {
         // fallback. Only shown when the user enabled it AND the hardware/enrolment is currently usable.
         if (BiometricUnlock.isEnabled(this) && BiometricUnlock.isAvailable(this)) {
             col.addView(secondary("Unlock with biometrics", v -> promptBiometricUnlock()));
+            col.postDelayed(this::promptBiometricUnlock, 350);   // auto-prompt: the user just touches the sensor, no extra tap
         }
     }
 
