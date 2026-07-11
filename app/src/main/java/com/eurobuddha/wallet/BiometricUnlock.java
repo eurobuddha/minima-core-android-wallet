@@ -57,12 +57,9 @@ public final class BiometricUnlock {
 
     private static final int GCM_TAG_BITS = 128;
 
-    /** Authenticators we accept. DEVICE_CREDENTIAL (PIN) as a CryptoObject fallback needs API 30+. */
+    /** Crypto-backed prompts (we pass a CryptoObject) must use BIOMETRIC_STRONG only — pairing a CryptoObject
+     *  with DEVICE_CREDENTIAL is rejected by BiometricPrompt on many devices. The typed passphrase is the fallback. */
     private static int allowedAuthenticators() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            return BiometricManager.Authenticators.BIOMETRIC_STRONG
-                    | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
-        }
         return BiometricManager.Authenticators.BIOMETRIC_STRONG;
     }
 
@@ -224,18 +221,19 @@ public final class BiometricUnlock {
                                BiometricPrompt.AuthenticationCallback zCb) {
         Executor exec = ContextCompat.getMainExecutor(zActivity);
         BiometricPrompt bp = new BiometricPrompt(zActivity, exec, zCb);
-        bp.authenticate(zInfo, new BiometricPrompt.CryptoObject(zCipher));
+        try {
+            bp.authenticate(zInfo, new BiometricPrompt.CryptoObject(zCipher));
+        } catch (Exception e) {   // e.g. a device rejecting the crypto+authenticator combo — report instead of crashing
+            zCb.onAuthenticationError(BiometricPrompt.ERROR_HW_UNAVAILABLE, "Biometric prompt failed: " + e.getMessage());
+        }
     }
 
     private static BiometricPrompt.PromptInfo promptInfo(String zTitle, String zSubtitle) {
         BiometricPrompt.PromptInfo.Builder b = new BiometricPrompt.PromptInfo.Builder()
                 .setTitle(zTitle)
                 .setSubtitle(zSubtitle)
-                .setAllowedAuthenticators(allowedAuthenticators());
-        // A negative button is required (and only allowed) when DEVICE_CREDENTIAL is NOT an option.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            b.setNegativeButtonText("Use passphrase");
-        }
+                .setAllowedAuthenticators(allowedAuthenticators())
+                .setNegativeButtonText("Use passphrase");   // required whenever DEVICE_CREDENTIAL isn't an allowed authenticator
         return b.build();
     }
 
