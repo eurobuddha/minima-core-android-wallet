@@ -430,10 +430,10 @@ public class MainActivity extends AppCompatActivity {
         }));
 
         // Biometric unlock is an OPTIONAL convenience — the typed passphrase above always remains the
-        // fallback. Only shown when the user enabled it AND the hardware/enrolment is currently usable.
+        // fallback. When enabled AND currently usable, the OS biometric sheet is auto-prompted; no
+        // on-screen button is needed (dismissing the sheet just leaves the passphrase field available).
         if (BiometricUnlock.isEnabled(this) && BiometricUnlock.isAvailable(this)) {
-            col.addView(secondary("Unlock with biometrics", v -> promptBiometricUnlock()));
-            col.postDelayed(this::promptBiometricUnlock, 350);   // auto-prompt: the user just touches the sensor, no extra tap
+            col.postDelayed(this::promptBiometricUnlock, 350);
         }
     }
 
