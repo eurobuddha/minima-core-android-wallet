@@ -120,7 +120,10 @@ public class SeedVault {
     // Existence / session
     // ---------------------------------------------------------------------------------------------
 
-    /** True once a vault blob has been created on this device (or restored via Auto Backup). */
+    /** True once a vault blob has been created ON THIS DEVICE. It is never restored from a backup: this app's
+     *  backup rules are include-only and name just the two seedless keyuses mirrors, so the vault is excluded
+     *  by omission. (The fleet-wide 2026-08-09 sweep deliberately left this app's rules alone — those mirrors
+     *  are a WOTS key-reuse safeguard, MAX-reconciled so a restore can only ever raise the counter.) */
     public boolean exists() {
         return mStore.contains();
     }

@@ -1,0 +1,437 @@
+{
+  "app/build.gradle": {
+    "mtime": 1783800140.5166304,
+    "ast_hash": "b908ceaea7403737adf06c458835f674",
+    "semantic_hash": "b908ceaea7403737adf06c458835f674"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/BalancesView.java": {
+    "mtime": 1783343001.940781,
+    "ast_hash": "96e6bbb2bb076f7cc77c4b054aa9e51c",
+    "semantic_hash": "96e6bbb2bb076f7cc77c4b054aa9e51c"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/BaseView.java": {
+    "mtime": 1783343001.9417408,
+    "ast_hash": "af3bf4ccebcd4e0e30a7224142bc5448",
+    "semantic_hash": "af3bf4ccebcd4e0e30a7224142bc5448"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/BiometricUnlock.java": {
+    "mtime": 1783468693.858512,
+    "ast_hash": "74fd5e92c939af77e58d9d0c5678d528",
+    "semantic_hash": "74fd5e92c939af77e58d9d0c5678d528"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/CoinAggregator.java": {
+    "mtime": 1783343001.9397051,
+    "ast_hash": "3af194aef934096ec527507593c60d7a",
+    "semantic_hash": "3af194aef934096ec527507593c60d7a"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/CoinSelector.java": {
+    "mtime": 1783343001.9464664,
+    "ast_hash": "21d31bbb84e4ea9b474eafa17e24b370",
+    "semantic_hash": "21d31bbb84e4ea9b474eafa17e24b370"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/Design.java": {
+    "mtime": 1783343001.9403067,
+    "ast_hash": "f92c5af6d1b7df06042a189c1efdb5ac",
+    "semantic_hash": "f92c5af6d1b7df06042a189c1efdb5ac"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/IconResolver.java": {
+    "mtime": 1783343001.9446468,
+    "ast_hash": "b461c3f41d2bda8ef1e064f947715f5b",
+    "semantic_hash": "b461c3f41d2bda8ef1e064f947715f5b"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/Identicon.java": {
+    "mtime": 1783343001.9420586,
+    "ast_hash": "cff12cf603a6db71b455c4a74428eaef",
+    "semantic_hash": "cff12cf603a6db71b455c4a74428eaef"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/ImageLoader.java": {
+    "mtime": 1783343001.9497023,
+    "ast_hash": "096e84e8402b6193c3b5d0903be8f168",
+    "semantic_hash": "096e84e8402b6193c3b5d0903be8f168"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/KeyUses.java": {
+    "mtime": 1783343001.9489498,
+    "ast_hash": "117f7abca5e8910df0d7c508d22d6fd3",
+    "semantic_hash": "117f7abca5e8910df0d7c508d22d6fd3"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/MainActivity.java": {
+    "mtime": 1783787629.828158,
+    "ast_hash": "85af5a49ed50619ec98ac8fff61a51ce",
+    "semantic_hash": "85af5a49ed50619ec98ac8fff61a51ce"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/PrefsKeyUses.java": {
+    "mtime": 1783343001.9460478,
+    "ast_hash": "01724e3908c1a47dee33f480a7fae2f2",
+    "semantic_hash": "01724e3908c1a47dee33f480a7fae2f2"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/ReceiveView.java": {
+    "mtime": 1783343001.950185,
+    "ast_hash": "296db43984c395876d3be455d33b14dc",
+    "semantic_hash": "296db43984c395876d3be455d33b14dc"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/SeedVault.java": {
+    "mtime": 1783783398.9922051,
+    "ast_hash": "0b1162235fc0b928c4390904afd75729",
+    "semantic_hash": "0b1162235fc0b928c4390904afd75729"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/SendView.java": {
+    "mtime": 1783343001.9477572,
+    "ast_hash": "cbed545869cd5dfce3f0dddaaa6373c0",
+    "semantic_hash": "cbed545869cd5dfce3f0dddaaa6373c0"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/SessionPolicy.java": {
+    "mtime": 1783343001.9443972,
+    "ast_hash": "ada490d8dfc25a01e299d8289c440cac",
+    "semantic_hash": "ada490d8dfc25a01e299d8289c440cac"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/SettingsView.java": {
+    "mtime": 1783783458.3842635,
+    "ast_hash": "fb9d2b349a53f75c0797251c26c04a90",
+    "semantic_hash": "fb9d2b349a53f75c0797251c26c04a90"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/TokenBalance.java": {
+    "mtime": 1783343001.9467235,
+    "ast_hash": "84ec93246468b4ddaaca37b956de8717",
+    "semantic_hash": "84ec93246468b4ddaaca37b956de8717"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/TokenMeta.java": {
+    "mtime": 1783343001.941174,
+    "ast_hash": "ea2265915a69a50984444c06f4a48605",
+    "semantic_hash": "ea2265915a69a50984444c06f4a48605"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/TxnFactory.java": {
+    "mtime": 1783343001.9482856,
+    "ast_hash": "8b4ae391ff7574f658c4a28e5d6b75a3",
+    "semantic_hash": "8b4ae391ff7574f658c4a28e5d6b75a3"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/Util.java": {
+    "mtime": 1783343001.9414618,
+    "ast_hash": "c14313ee3d797e32b8ebdb78679ece41",
+    "semantic_hash": "c14313ee3d797e32b8ebdb78679ece41"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/VaultBlob.java": {
+    "mtime": 1783343001.9486263,
+    "ast_hash": "ff58f8011a346320b10f76bc00c1cf79",
+    "semantic_hash": "ff58f8011a346320b10f76bc00c1cf79"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/VaultCrypto.java": {
+    "mtime": 1783343001.9470625,
+    "ast_hash": "97e9283bce7fe926d59e3d6ce1540547",
+    "semantic_hash": "97e9283bce7fe926d59e3d6ce1540547"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/WalletCore.java": {
+    "mtime": 1783343001.9449372,
+    "ast_hash": "f3a71223106d233016592d7d70699f9e",
+    "semantic_hash": "f3a71223106d233016592d7d70699f9e"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/WalletSession.java": {
+    "mtime": 1783343001.949322,
+    "ast_hash": "98853306b017e22f23219b964f8bcb8f",
+    "semantic_hash": "98853306b017e22f23219b964f8bcb8f"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/WebValidate.java": {
+    "mtime": 1783343001.9400058,
+    "ast_hash": "8f47c3cd859ea5cafb6cbe1c7c68d73c",
+    "semantic_hash": "8f47c3cd859ea5cafb6cbe1c7c68d73c"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/comms/NodeApi.java": {
+    "mtime": 1783343001.9423995,
+    "ast_hash": "8823e7cd36af013c541e2d7c83aa3b39",
+    "semantic_hash": "8823e7cd36af013c541e2d7c83aa3b39"
+  },
+  "app/src/main/java/com/eurobuddha/wallet/comms/NodeLink.java": {
+    "mtime": 1783343001.9427278,
+    "ast_hash": "e5b1911bb870bc216a6ecd18525d4556",
+    "semantic_hash": "e5b1911bb870bc216a6ecd18525d4556"
+  },
+  "app/src/main/java/org/minima/database/userprefs/txndb/TxnRow.java": {
+    "mtime": 1783343001.9225705,
+    "ast_hash": "3412c5942da69bf8eba43d54cedd63d5",
+    "semantic_hash": "3412c5942da69bf8eba43d54cedd63d5"
+  },
+  "app/src/main/java/org/minima/objects/Address.java": {
+    "mtime": 1783343001.9234433,
+    "ast_hash": "c6d53f9277da2b5c699b8fd75408cab7",
+    "semantic_hash": "c6d53f9277da2b5c699b8fd75408cab7"
+  },
+  "app/src/main/java/org/minima/objects/Coin.java": {
+    "mtime": 1783343001.922936,
+    "ast_hash": "6bc5abf1e61e8a59c450fb38fdb9f48c",
+    "semantic_hash": "6bc5abf1e61e8a59c450fb38fdb9f48c"
+  },
+  "app/src/main/java/org/minima/objects/CoinProof.java": {
+    "mtime": 1783343001.923814,
+    "ast_hash": "131ad0f39a7e9939ff5aadd765f79bf4",
+    "semantic_hash": "131ad0f39a7e9939ff5aadd765f79bf4"
+  },
+  "app/src/main/java/org/minima/objects/ScriptProof.java": {
+    "mtime": 1783343001.9260721,
+    "ast_hash": "55d58a66bd68cb01d07d603e94699ab8",
+    "semantic_hash": "55d58a66bd68cb01d07d603e94699ab8"
+  },
+  "app/src/main/java/org/minima/objects/StateVariable.java": {
+    "mtime": 1783343001.9266434,
+    "ast_hash": "39efee3fd9b8c4f727c369f3aef7a7e4",
+    "semantic_hash": "39efee3fd9b8c4f727c369f3aef7a7e4"
+  },
+  "app/src/main/java/org/minima/objects/Token.java": {
+    "mtime": 1783343001.9290185,
+    "ast_hash": "305f6dbabb8a42f91e4bf514277f61b6",
+    "semantic_hash": "305f6dbabb8a42f91e4bf514277f61b6"
+  },
+  "app/src/main/java/org/minima/objects/Transaction.java": {
+    "mtime": 1783343001.9308841,
+    "ast_hash": "7d1d5e264452f1a192129431dcfe3f56",
+    "semantic_hash": "7d1d5e264452f1a192129431dcfe3f56"
+  },
+  "app/src/main/java/org/minima/objects/Witness.java": {
+    "mtime": 1783343001.9270327,
+    "ast_hash": "f421c306a7264f9ad3355d768f983693",
+    "semantic_hash": "f421c306a7264f9ad3355d768f983693"
+  },
+  "app/src/main/java/org/minima/objects/base/MiniByte.java": {
+    "mtime": 1783343001.9298155,
+    "ast_hash": "90b5a502ba1330cd40a040fd0e2cf1a2",
+    "semantic_hash": "90b5a502ba1330cd40a040fd0e2cf1a2"
+  },
+  "app/src/main/java/org/minima/objects/base/MiniData.java": {
+    "mtime": 1783343001.9294825,
+    "ast_hash": "64a51255f46ddd7f5de5100bf039d5d8",
+    "semantic_hash": "64a51255f46ddd7f5de5100bf039d5d8"
+  },
+  "app/src/main/java/org/minima/objects/base/MiniNumber.java": {
+    "mtime": 1783343001.9301507,
+    "ast_hash": "39eb2737fdf03aed9189826341b08d64",
+    "semantic_hash": "39eb2737fdf03aed9189826341b08d64"
+  },
+  "app/src/main/java/org/minima/objects/base/MiniString.java": {
+    "mtime": 1783343001.9305046,
+    "ast_hash": "2cc24e2b152d17dd4e84ac146378082f",
+    "semantic_hash": "2cc24e2b152d17dd4e84ac146378082f"
+  },
+  "app/src/main/java/org/minima/objects/keys/Signature.java": {
+    "mtime": 1783343001.9276595,
+    "ast_hash": "2b6fb30a30ddecc33dd261e471caf4da",
+    "semantic_hash": "2b6fb30a30ddecc33dd261e471caf4da"
+  },
+  "app/src/main/java/org/minima/objects/keys/SignatureProof.java": {
+    "mtime": 1783343001.9273422,
+    "ast_hash": "2ad609eb580f026e0df2c6fbedd6d783",
+    "semantic_hash": "2ad609eb580f026e0df2c6fbedd6d783"
+  },
+  "app/src/main/java/org/minima/objects/keys/TreeKey.java": {
+    "mtime": 1783343001.9286478,
+    "ast_hash": "87f021d00b93126d8185f5d9a3874a34",
+    "semantic_hash": "87f021d00b93126d8185f5d9a3874a34"
+  },
+  "app/src/main/java/org/minima/objects/keys/TreeKeyNode.java": {
+    "mtime": 1783343001.9279723,
+    "ast_hash": "fa39d55a8f657a7e0ee760a1296c5299",
+    "semantic_hash": "fa39d55a8f657a7e0ee760a1296c5299"
+  },
+  "app/src/main/java/org/minima/objects/keys/Winternitz.java": {
+    "mtime": 1783343001.9282727,
+    "ast_hash": "001b7bbc864dd9e8eb39765d90017803",
+    "semantic_hash": "001b7bbc864dd9e8eb39765d90017803"
+  },
+  "app/src/main/java/org/minima/objects/mmr/MMR.java": {
+    "mtime": 1783343001.9247577,
+    "ast_hash": "60f81704d773a5d71737e027706a3d7c",
+    "semantic_hash": "60f81704d773a5d71737e027706a3d7c"
+  },
+  "app/src/main/java/org/minima/objects/mmr/MMRData.java": {
+    "mtime": 1783343001.9258022,
+    "ast_hash": "cf7c69b2c1a1a676d489519b85b64ac3",
+    "semantic_hash": "cf7c69b2c1a1a676d489519b85b64ac3"
+  },
+  "app/src/main/java/org/minima/objects/mmr/MMREntry.java": {
+    "mtime": 1783343001.9254658,
+    "ast_hash": "d47b078bb40fc092c9070458e08e7717",
+    "semantic_hash": "d47b078bb40fc092c9070458e08e7717"
+  },
+  "app/src/main/java/org/minima/objects/mmr/MMREntryNumber.java": {
+    "mtime": 1783343001.9241319,
+    "ast_hash": "36209e1971c616a1797204eabee7a03d",
+    "semantic_hash": "36209e1971c616a1797204eabee7a03d"
+  },
+  "app/src/main/java/org/minima/objects/mmr/MMRProof.java": {
+    "mtime": 1783343001.9251459,
+    "ast_hash": "1c582bf81b560923f70698edc73ecd7b",
+    "semantic_hash": "1c582bf81b560923f70698edc73ecd7b"
+  },
+  "app/src/main/java/org/minima/system/brains/TxPoWGenerator.java": {
+    "mtime": 1783343001.9381802,
+    "ast_hash": "120fb934841fc6ef83ea1916e0a57ebc",
+    "semantic_hash": "120fb934841fc6ef83ea1916e0a57ebc"
+  },
+  "app/src/main/java/org/minima/system/params/GeneralParams.java": {
+    "mtime": 1783343001.9385812,
+    "ast_hash": "f268bce829f5eed98df56fdf51f77583",
+    "semantic_hash": "f268bce829f5eed98df56fdf51f77583"
+  },
+  "app/src/main/java/org/minima/system/params/GlobalParams.java": {
+    "mtime": 1783343001.9389937,
+    "ast_hash": "4f1574192a588cbf084676dcc691342b",
+    "semantic_hash": "4f1574192a588cbf084676dcc691342b"
+  },
+  "app/src/main/java/org/minima/utils/BIP39.java": {
+    "mtime": 1783343001.9371667,
+    "ast_hash": "7cb3da6433390617138ac8c54e788598",
+    "semantic_hash": "7cb3da6433390617138ac8c54e788598"
+  },
+  "app/src/main/java/org/minima/utils/BaseConverter.java": {
+    "mtime": 1783343001.9315064,
+    "ast_hash": "d703e91687b044a3d5612d3482bf5fa1",
+    "semantic_hash": "d703e91687b044a3d5612d3482bf5fa1"
+  },
+  "app/src/main/java/org/minima/utils/Crypto.java": {
+    "mtime": 1783343001.9363992,
+    "ast_hash": "268eefa2a2f17b1b0a99bd6069a688a8",
+    "semantic_hash": "268eefa2a2f17b1b0a99bd6069a688a8"
+  },
+  "app/src/main/java/org/minima/utils/FastByteArrayStream.java": {
+    "mtime": 1783343001.9359543,
+    "ast_hash": "1fe5f2b646f7375a1d816dc9994bff89",
+    "semantic_hash": "1fe5f2b646f7375a1d816dc9994bff89"
+  },
+  "app/src/main/java/org/minima/utils/Maths.java": {
+    "mtime": 1783343001.9378846,
+    "ast_hash": "1e03a1ff7141a2feb5979360e0a5a079",
+    "semantic_hash": "1e03a1ff7141a2feb5979360e0a5a079"
+  },
+  "app/src/main/java/org/minima/utils/MiniFormat.java": {
+    "mtime": 1783343001.9376462,
+    "ast_hash": "3783420a8544175a3aa811cb1bce490e",
+    "semantic_hash": "3783420a8544175a3aa811cb1bce490e"
+  },
+  "app/src/main/java/org/minima/utils/MinimaLogger.java": {
+    "mtime": 1783343001.9312205,
+    "ast_hash": "7d2dc8e34dedeaf8da5eccbb01c06738",
+    "semantic_hash": "7d2dc8e34dedeaf8da5eccbb01c06738"
+  },
+  "app/src/main/java/org/minima/utils/Streamable.java": {
+    "mtime": 1783343001.9361498,
+    "ast_hash": "9dc41777a95fe258a24c91c01aa50517",
+    "semantic_hash": "9dc41777a95fe258a24c91c01aa50517"
+  },
+  "app/src/main/java/org/minima/utils/json/ItemList.java": {
+    "mtime": 1783343001.9356189,
+    "ast_hash": "40e234577ad41682bb4293357a87a30f",
+    "semantic_hash": "40e234577ad41682bb4293357a87a30f"
+  },
+  "app/src/main/java/org/minima/utils/json/JSONArray.java": {
+    "mtime": 1783343001.9318519,
+    "ast_hash": "e2265bed672a3733a16de88d8a7496d3",
+    "semantic_hash": "e2265bed672a3733a16de88d8a7496d3"
+  },
+  "app/src/main/java/org/minima/utils/json/JSONAware.java": {
+    "mtime": 1783343001.9328377,
+    "ast_hash": "d2cfaa660491b9402e84d494354c946a",
+    "semantic_hash": "d2cfaa660491b9402e84d494354c946a"
+  },
+  "app/src/main/java/org/minima/utils/json/JSONObject.java": {
+    "mtime": 1783343001.9353669,
+    "ast_hash": "434948783844d718f3a5e2407d4f9d89",
+    "semantic_hash": "434948783844d718f3a5e2407d4f9d89"
+  },
+  "app/src/main/java/org/minima/utils/json/JSONStreamAware.java": {
+    "mtime": 1783343001.9325182,
+    "ast_hash": "5e98bbc0f1ec744dc47e04a31c753dd3",
+    "semantic_hash": "5e98bbc0f1ec744dc47e04a31c753dd3"
+  },
+  "app/src/main/java/org/minima/utils/json/JSONValue.java": {
+    "mtime": 1783343001.9322135,
+    "ast_hash": "4389daf655d41d355e9c482d836d6d89",
+    "semantic_hash": "4389daf655d41d355e9c482d836d6d89"
+  },
+  "app/src/main/java/org/minima/utils/json/JSONWriter.java": {
+    "mtime": 1783343001.9357853,
+    "ast_hash": "90f2d716bd3aa6901c544b05f84e1e75",
+    "semantic_hash": "90f2d716bd3aa6901c544b05f84e1e75"
+  },
+  "app/src/main/java/org/minima/utils/json/parser/ContainerFactory.java": {
+    "mtime": 1783343001.9339485,
+    "ast_hash": "a13e29c1e8eb4d4e6626eeb50d6aa55c",
+    "semantic_hash": "a13e29c1e8eb4d4e6626eeb50d6aa55c"
+  },
+  "app/src/main/java/org/minima/utils/json/parser/ContentHandler.java": {
+    "mtime": 1783343001.9342315,
+    "ast_hash": "b045a013586fa50a0669719be3006ee5",
+    "semantic_hash": "b045a013586fa50a0669719be3006ee5"
+  },
+  "app/src/main/java/org/minima/utils/json/parser/JSONParser.java": {
+    "mtime": 1783343001.934609,
+    "ast_hash": "8a8df61a5a8e5b8e4b67e05a8724d097",
+    "semantic_hash": "8a8df61a5a8e5b8e4b67e05a8724d097"
+  },
+  "app/src/main/java/org/minima/utils/json/parser/ParseException.java": {
+    "mtime": 1783343001.9333675,
+    "ast_hash": "a4f6cdedc225a660ea129e8e0c385aa2",
+    "semantic_hash": "a4f6cdedc225a660ea129e8e0c385aa2"
+  },
+  "app/src/main/java/org/minima/utils/json/parser/Yylex.java": {
+    "mtime": 1783343001.9351401,
+    "ast_hash": "5993964b5c6c5f7d1178145642d7e8db",
+    "semantic_hash": "5993964b5c6c5f7d1178145642d7e8db"
+  },
+  "app/src/main/java/org/minima/utils/json/parser/Yytoken.java": {
+    "mtime": 1783343001.9336689,
+    "ast_hash": "be4707f14e8048198a2af720e2c72982",
+    "semantic_hash": "be4707f14e8048198a2af720e2c72982"
+  },
+  "app/src/test/java/com/eurobuddha/wallet/CoinJsonTest.java": {
+    "mtime": 1783343001.9840348,
+    "ast_hash": "53160c8feac7a4ddf0f25301db96df7c",
+    "semantic_hash": "53160c8feac7a4ddf0f25301db96df7c"
+  },
+  "app/src/test/java/com/eurobuddha/wallet/CoinSelectorTest.java": {
+    "mtime": 1783343001.984418,
+    "ast_hash": "86e5bd47eac67a072484946074249d95",
+    "semantic_hash": "86e5bd47eac67a072484946074249d95"
+  },
+  "app/src/test/java/com/eurobuddha/wallet/SeedVaultC1Test.java": {
+    "mtime": 1783783571.104425,
+    "ast_hash": "3edde88e85951b2b002a69b15b7ee0d0",
+    "semantic_hash": "3edde88e85951b2b002a69b15b7ee0d0"
+  },
+  "app/src/test/java/com/eurobuddha/wallet/SessionUxTest.java": {
+    "mtime": 1783343001.9853647,
+    "ast_hash": "9817c0686f80b71b175161bb5db2a199",
+    "semantic_hash": "9817c0686f80b71b175161bb5db2a199"
+  },
+  "app/src/test/java/com/eurobuddha/wallet/TxnFactoryTest.java": {
+    "mtime": 1783343001.985996,
+    "ast_hash": "de1e73ec90437862b28b6a67b8e47439",
+    "semantic_hash": "de1e73ec90437862b28b6a67b8e47439"
+  },
+  "app/src/test/java/com/eurobuddha/wallet/UtilAddressTest.java": {
+    "mtime": 1783343001.986363,
+    "ast_hash": "a04bf3e3059273c371b763cc5d54da75",
+    "semantic_hash": "a04bf3e3059273c371b763cc5d54da75"
+  },
+  "app/src/test/java/com/eurobuddha/wallet/VaultSecurityTest.java": {
+    "mtime": 1783343001.9866998,
+    "ast_hash": "7956ea9687629dbba29bdae843baa83d",
+    "semantic_hash": "7956ea9687629dbba29bdae843baa83d"
+  },
+  "app/src/test/java/com/eurobuddha/wallet/WalletCoreTest.java": {
+    "mtime": 1783343001.9871411,
+    "ast_hash": "9f504feb94ec7e47b02faf0cd6e8a710",
+    "semantic_hash": "9f504feb94ec7e47b02faf0cd6e8a710"
+  },
+  "build.gradle": {
+    "mtime": 1782992674.290696,
+    "ast_hash": "583193a3771192898c84ddef2d926224",
+    "semantic_hash": "583193a3771192898c84ddef2d926224"
+  },
+  "gradlew": {
+    "mtime": 1782992674.2882667,
+    "ast_hash": "02c16663c6f0aa37f98d94d698c22b8c",
+    "semantic_hash": "02c16663c6f0aa37f98d94d698c22b8c"
+  },
+  "settings.gradle": {
+    "mtime": 1782992677.6796806,
+    "ast_hash": "0fb45356bd77cc38e4ad63e941f6e3ff",
+    "semantic_hash": "0fb45356bd77cc38e4ad63e941f6e3ff"
+  }
+}
