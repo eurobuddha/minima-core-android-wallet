@@ -1,8 +1,8 @@
 {
   "app/build.gradle": {
-    "mtime": 1783800140.5166304,
-    "ast_hash": "b908ceaea7403737adf06c458835f674",
-    "semantic_hash": "b908ceaea7403737adf06c458835f674"
+    "mtime": 1786444413.4404132,
+    "ast_hash": "7e5224ca8562ee38aa6d1c44cc099c26",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/eurobuddha/wallet/BalancesView.java": {
     "mtime": 1783343001.940781,
@@ -70,9 +70,9 @@
     "semantic_hash": "296db43984c395876d3be455d33b14dc"
   },
   "app/src/main/java/com/eurobuddha/wallet/SeedVault.java": {
-    "mtime": 1783783398.9922051,
-    "ast_hash": "0b1162235fc0b928c4390904afd75729",
-    "semantic_hash": "0b1162235fc0b928c4390904afd75729"
+    "mtime": 1786273950.4832675,
+    "ast_hash": "24f1a8008c8898b97129ad6797699513",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/eurobuddha/wallet/SendView.java": {
     "mtime": 1783343001.9477572,
@@ -433,5 +433,45 @@
     "mtime": 1782992677.6796806,
     "ast_hash": "0fb45356bd77cc38e4ad63e941f6e3ff",
     "semantic_hash": "0fb45356bd77cc38e4ad63e941f6e3ff"
+  },
+  "CLAUDE.md": {
+    "mtime": 1784124679.0872672,
+    "ast_hash": "4439d09bc81851d89f9ffcecc4136dcf",
+    "semantic_hash": ""
+  },
+  "app/src/main/res/drawable-nodpi/minima_coin.png": {
+    "mtime": 1782995470.640931,
+    "ast_hash": "b42a00a97985ae43dc75340e887b85c2",
+    "semantic_hash": ""
+  },
+  "app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png": {
+    "mtime": 1783800108.4596443,
+    "ast_hash": "c9c15a50093736553d4da0aecefbf1da",
+    "semantic_hash": ""
+  },
+  "app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png": {
+    "mtime": 1783800108.4152706,
+    "ast_hash": "3d90561cea985b059280ae20597473ba",
+    "semantic_hash": ""
+  },
+  "app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png": {
+    "mtime": 1783800108.5071135,
+    "ast_hash": "bd555def5282b0f25373a8d2a921d2c6",
+    "semantic_hash": ""
+  },
+  "app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png": {
+    "mtime": 1783800108.562766,
+    "ast_hash": "bb35a806cd4e64274a1984a7b92680ce",
+    "semantic_hash": ""
+  },
+  "app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png": {
+    "mtime": 1783800108.629533,
+    "ast_hash": "d38cc9f7a444d91e54f4c3fa26fcb58c",
+    "semantic_hash": ""
+  },
+  "app/src/main/res/raw/minima_icon.svg": {
+    "mtime": 1782995470.6458073,
+    "ast_hash": "df87d6ade37210e92ec34cf658a62940",
+    "semantic_hash": ""
   }
 }
