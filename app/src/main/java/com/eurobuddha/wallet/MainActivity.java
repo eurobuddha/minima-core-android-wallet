@@ -94,6 +94,10 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Design.load(this);
+        // Reuse PandaPools: native dialogs follow the selected app palette, not the system mode.
+        getDelegate().setLocalNightMode(Design.isDark()
+                ? androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                : androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO);
 
         registerLaunchers();
 
