@@ -127,6 +127,7 @@ public class TxnFactory {
         public MiniData getTokenID()  { return mTokenID; }
         public int getKeyIndex()      { return mKeyIndex; }
         public Token getToken()       { return mToken; }
+        public ArrayList<StateVariable> getState() { return mState; }
 
         /** Reconstruct the on-chain {@link Coin} exactly, for use as a transaction input. */
         Coin toCoin() {
@@ -400,6 +401,63 @@ public class TxnFactory {
         recipients.add(new Output(selfAddr, outAmount));
 
         return build(zInputs, recipients, 1, zTokenID, zBurn, zID);
+    }
+
+    /**
+     * NFT TRANSFER: spend ONE token coin whole to {@code zRecipient} — no change, no split, exact
+     * amount — replaying every state variable of the input coin verbatim onto the transaction and
+     * storing state on the output ({@code storestate:true}). This reproduces the structure the NFT
+     * wallet builds node-side (txnoutput storestate:true + txnstate per port), which is what a
+     * locked StateNFT token script requires: {@code SAMESTATE(0 ..)} and
+     * {@code VERIFYOUT(@INPUT GETOUTADDR(@INPUT) @AMOUNT @TOKENID TRUE)} — same index, same
+     * amount, same tokenid, state kept. A plain NFT coin (no state) builds the same transaction
+     * with an empty state set. Signed locally with the input coin's own key index.
+     */
+    public BuiltTxn buildNftTransfer(InputCoin zCoin, String zRecipient, String zID) {
+
+        if (isMinima(zCoin.getTokenID())) {
+            throw new IllegalArgumentException("Not a token coin — NFT transfer needs a custom-token coin");
+        }
+        if (zCoin.getToken() == null) {
+            throw new IllegalArgumentException("NFT transfer requires the Token descriptor on the input coin");
+        }
+
+        MiniData recipient = parseAddress(zRecipient);
+
+        //Validate the claimed key index actually derives this address (same gate as build()).
+        MiniData derived = mWallet.getAddress(zCoin.getKeyIndex()).getAddressData();
+        if (!derived.isEqual(zCoin.getAddress())) {
+            throw new IllegalArgumentException("Input address " + zCoin.getAddress().to0xString()
+                    + " does not match wallet key index " + zCoin.getKeyIndex()
+                    + " (derived " + derived.to0xString() + ")");
+        }
+
+        Transaction transaction = new Transaction();
+        Witness witness = new Witness();
+
+        transaction.addInput(zCoin.toCoin());
+
+        //Whole coin to the recipient at output index 0 (matches the input index for VERIFYOUT).
+        Coin out = new Coin(Coin.COINID_OUTPUT, recipient, zCoin.getAmount(), Token.TOKENID_MINIMA, true);
+        out.resetTokenID(zCoin.getTokenID());
+        out.setToken(zCoin.getToken());
+        transaction.addOutput(out);
+
+        //Replay the input coin's state VERBATIM (ports sorted by Transaction.addStateVariable).
+        for (StateVariable sv : zCoin.getState()) {
+            transaction.addStateVariable(sv);
+        }
+
+        TxPoWGenerator.precomputeTransactionCoinID(transaction);
+        transaction.calculateTransactionID();
+        MiniData txid = transaction.getTransactionID();
+
+        Signature sig = mWallet.signTransactionID(txid, zCoin.getKeyIndex());
+        witness.addSignature(sig);
+
+        TxnRow row = new TxnRow(zID, transaction, witness);
+        MiniData importdata = MiniData.getMiniDataVersion(row);
+        return new BuiltTxn(zID, transaction, witness, importdata, 1);
     }
 
     // ---------------------------------------------------------------------------------------------

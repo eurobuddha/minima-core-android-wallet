@@ -21,6 +21,15 @@ public final class Util {
 
     /** A Minima address: 0x + exactly 64 hex (32-byte script hash), or Mx + 40–118 alnum.
      *  Matches the dapp's validateAddress; a pre-filter before the node's checkaddress. */
+    /** A fresh random local txn id ("mw" + 16 hex chars) for txnimport/txndelete round-trips. */
+    public static String newTxnId() {
+        byte[] r = new byte[8];
+        new java.security.SecureRandom().nextBytes(r);
+        StringBuilder sb = new StringBuilder("mw");
+        for (byte x : r) sb.append(String.format("%02x", x));
+        return sb.toString();
+    }
+
     public static boolean isValidAddress(String a) {
         return a != null && a.matches("^(0x[0-9a-fA-F]{64}|Mx[A-Za-z0-9]{40,118})$");
     }

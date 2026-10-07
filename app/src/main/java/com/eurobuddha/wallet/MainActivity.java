@@ -50,7 +50,8 @@ public class MainActivity extends AppCompatActivity {
     public static final int TAB_SEND     = 1;
     public static final int TAB_RECEIVE  = 2;
     public static final int TAB_HISTORY  = 3;
-    public static final int TAB_SETTINGS = 4;
+    public static final int TAB_NFTS     = 4;
+    public static final int TAB_SETTINGS = 5;
 
     // --- wallet core ---
     private WalletSession mSession;
@@ -83,11 +84,12 @@ public class MainActivity extends AppCompatActivity {
     private TextView mBlockView;
     private LinearLayout mPairingBanner;
     private FrameLayout mContent;
-    private TextView mTabBalances, mTabSend, mTabReceive, mTabHistory, mTabSettings;
+    private TextView mTabBalances, mTabSend, mTabReceive, mTabHistory, mTabNfts, mTabSettings;
     private BalancesView mBalancesView;
     private SendView mSendView;
     private ReceiveView mReceiveView;
     private HistoryView mHistoryView;
+    private NftView mNftView;
     private SettingsView mSettingsView;
     private int mTab = TAB_BALANCES;
 
@@ -573,6 +575,7 @@ public class MainActivity extends AppCompatActivity {
         mSendView     = new SendView(this);
         mReceiveView  = new ReceiveView(this);
         mHistoryView  = new HistoryView(this);
+        mNftView      = new NftView(this);
         mSettingsView = new SettingsView(this);
         goToTab(TAB_BALANCES);
     }
@@ -636,11 +639,13 @@ public class MainActivity extends AppCompatActivity {
         mTabSend     = tab("SEND", TAB_SEND);
         mTabReceive  = tab("RECEIVE", TAB_RECEIVE);
         mTabHistory  = tab("HISTORY", TAB_HISTORY);
+        mTabNfts     = tab("NFTS", TAB_NFTS);
         mTabSettings = tab("SETTINGS", TAB_SETTINGS);
         bar.addView(mTabBalances, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(mTabSend, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(mTabReceive, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(mTabHistory, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        bar.addView(mTabNfts, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(mTabSettings, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         return bar;
     }
@@ -665,6 +670,7 @@ public class MainActivity extends AppCompatActivity {
             case TAB_SEND:     view = mSendView; break;
             case TAB_RECEIVE:  view = mReceiveView; break;
             case TAB_HISTORY:  view = mHistoryView; break;
+            case TAB_NFTS:     view = mNftView; break;
             case TAB_SETTINGS: view = mSettingsView; break;
             default:           view = mBalancesView;
         }
@@ -676,8 +682,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void paintTabs() {
-        TextView[] tabs = {mTabBalances, mTabSend, mTabReceive, mTabHistory, mTabSettings};
-        int[] ids = {TAB_BALANCES, TAB_SEND, TAB_RECEIVE, TAB_HISTORY, TAB_SETTINGS};
+        TextView[] tabs = {mTabBalances, mTabSend, mTabReceive, mTabHistory, mTabNfts, mTabSettings};
+        int[] ids = {TAB_BALANCES, TAB_SEND, TAB_RECEIVE, TAB_HISTORY, TAB_NFTS, TAB_SETTINGS};
         for (int i = 0; i < tabs.length; i++) {
             boolean sel = mTab == ids[i];
             tabs[i].setTextColor(sel ? Design.accent() : Design.dim());
@@ -823,6 +829,7 @@ public class MainActivity extends AppCompatActivity {
             case TAB_SEND:     if (mSendView != null) mSendView.refresh(); break;
             case TAB_RECEIVE:  if (mReceiveView != null) mReceiveView.refresh(); break;
             case TAB_HISTORY:  if (mHistoryView != null) mHistoryView.refresh(); break;
+            case TAB_NFTS:     if (mNftView != null) mNftView.refresh(); break;
             case TAB_SETTINGS: if (mSettingsView != null) mSettingsView.refresh(); break;
             default:           if (mBalancesView != null) mBalancesView.refresh();
         }
@@ -853,6 +860,58 @@ public class MainActivity extends AppCompatActivity {
     /** Re-pull tokens + coins + balances from the node and refresh the active tab. */
     public void reload() {
         if (mPaired && mNode != null) loadEverything();
+    }
+
+    /**
+     * Shared review → fail-safe gate → build+sign → keyuses snapshot resync → publish flow, with
+     * the SAME ordering guarantees as SendView's confirmAndSend: the gate throws BEFORE any
+     * counter change; the snapshot resync runs in a finally of its own so a resync failure can
+     * never mask the build error or skip publish (the live counter is already durably advanced).
+     * Building SIGNS — only call the builder after the user's explicit confirm.
+     */
+    public void confirmSignAndPublish(String zReview, int zKeyIndex,
+                                      java.util.concurrent.Callable<TxnFactory.BuiltTxn> zBuilder) {
+        String full = zReview
+                + "\nKey " + zKeyIndex + ": using signature #" + mKeyUses.currentUses(zKeyIndex)
+                + " of " + Util.WOTS_MAX_USES
+                + "\n\nThis is IRREVERSIBLE. Once broadcast it cannot be undone.";
+
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Confirm — review carefully")
+                .setMessage(full)
+                .setPositiveButton("Sign & broadcast", (d, w) -> {
+                    try {
+                        mVault.assertSigningAllowed();
+                        TxnFactory.BuiltTxn built;
+                        try {
+                            built = zBuilder.call();
+                        } finally {
+                            try { mVault.syncKeyUses(); }
+                            catch (Exception snapEx) {
+                                android.util.Log.w("wallet", "keyuses snapshot resync failed (safe to lag)", snapEx);
+                            }
+                        }
+                        Toast.makeText(this, "Broadcasting…", Toast.LENGTH_SHORT).show();
+                        mNode.publish(built, new NodeApi.Cb() {
+                            @Override public void onResult(org.json.JSONObject json) {
+                                String txpowid = Util.extractTxpowid(json, built.getID());
+                                Toast.makeText(MainActivity.this, "Sent. txpowid " + txpowid, Toast.LENGTH_LONG).show();
+                                reload();
+                            }
+                            @Override public void onError(String message) {
+                                Toast.makeText(MainActivity.this, "Broadcast failed: " + message
+                                        + "\n(Signature already consumed — that leaf is safely skipped.)",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    } catch (SeedVault.SigningNotAllowedException block) {
+                        Toast.makeText(this, block.getMessage(), Toast.LENGTH_LONG).show();
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     // ---- ActivityResult bridges for the views ----

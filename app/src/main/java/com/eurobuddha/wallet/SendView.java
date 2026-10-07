@@ -492,11 +492,7 @@ public class SendView extends BaseView {
     }
 
     private String newId() {
-        byte[] r = new byte[8];
-        new SecureRandom().nextBytes(r);
-        StringBuilder sb = new StringBuilder("mw");
-        for (byte x : r) sb.append(String.format("%02x", x));
-        return sb.toString();
+        return Util.newTxnId();
     }
 
     // ---------------------------------------------------------------------------------------------

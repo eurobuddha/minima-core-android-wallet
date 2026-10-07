@@ -301,4 +301,75 @@ public class TxnFactoryTest {
         return sig.getAllSignatureProofs().get(sig.getAllSignatureProofs().size() - 1)
                 .getSignature().to0xString();
     }
+
+    // =============================================================================================
+    // NFT TRANSFER (StateNFT state replay, local signing, non-zero key index)
+    // =============================================================================================
+    @Test
+    public void nftTransfer_replaysStateSpendsWholeAndSigns() throws Exception {
+
+        InMemoryKeyUses uses = new InMemoryKeyUses();
+        WalletCore wallet = new WalletCore(PHRASE, uses);
+        TxnFactory factory = new TxnFactory(wallet);
+
+        //The NFT coin sits at key index 2 — the transfer must sign with THAT key.
+        int keyIndex = 2;
+        MiniData ourAddr = wallet.getAddress(keyIndex).getAddressData();
+        MiniData pubkey  = wallet.getPublicKey(keyIndex);
+
+        org.minima.objects.Token token = new org.minima.objects.Token(
+                cid("0xC011111111111111111111111111111111111111111111111111111111111111"),
+                MiniNumber.ONE, new MiniNumber("10"),
+                new org.minima.objects.base.MiniString("{\"name\":\"TestNFT\"}"),
+                new org.minima.objects.base.MiniString(
+                        "LET s=PREVSTATE(0) IF s EQ 0 AND SIGNEDBY(0xEE) THEN RETURN TRUE ENDIF "
+                        + "RETURN SAMESTATE(0 1) AND VERIFYOUT(@INPUT GETOUTADDR(@INPUT) @AMOUNT @TOKENID TRUE)"),
+                MiniNumber.ZERO);
+
+        ArrayList<org.minima.objects.StateVariable> state = new ArrayList<>();
+        state.add(new org.minima.objects.StateVariable(0, "7"));
+        state.add(new org.minima.objects.StateVariable(1, "[aGVsbG8=]"));
+
+        TxnFactory.InputCoin nft = new TxnFactory.InputCoin(
+                cid("0xDD11111111111111111111111111111111111111111111111111111111111111"),
+                ourAddr, MiniNumber.ONE, token.getTokenID(),
+                new MMREntryNumber(42), new MiniNumber("100"),
+                true, state, token, keyIndex);
+
+        //Recipient = another wallet's address (full, never truncated anywhere in this flow).
+        WalletCore other = new WalletCore("another test phrase entirely", new InMemoryKeyUses());
+        String recipient = other.getAddress(0).getMinimaAddress();
+
+        TxnFactory.BuiltTxn built = factory.buildNftTransfer(nft, recipient, "nft-test");
+        Transaction txn = built.getTransaction();
+
+        assertEquals("one input", 1, txn.getAllInputs().size());
+        assertEquals("one output (no change)", 1, txn.getAllOutputs().size());
+
+        Coin out = txn.getAllOutputs().get(0);
+        assertTrue("output to recipient",
+                out.getAddress().isEqual(other.getAddress(0).getAddressData()));
+        assertAmt("whole coin, exact amount", "1", out.getAmount());
+        assertTrue("tokenid preserved", out.getTokenID().isEqual(token.getTokenID()));
+        assertTrue("output stores state", out.storeState());
+
+        //State replayed verbatim on the transaction, both ports.
+        assertEquals("both state ports replayed", 2, txn.getCompleteState().size());
+        assertEquals("state 0 verbatim", "7", txn.getStateValue(0).toString());
+        assertEquals("state 1 verbatim", "[aGVsbG8=]", txn.getStateValue(1).toString());
+
+        //Signed with the COIN's key (index 2), one leaf consumed, verifies.
+        assertEquals("key 2 consumed one leaf", 1, uses.currentUses(keyIndex));
+        assertEquals("key 0 untouched", 0, uses.currentUses(0));
+        assertEquals("one signature", 1, built.getNumSignatures());
+        Signature sig = built.getWitness().getAllSignatures().get(0);
+        assertTrue("sig root pubkey == key-2 pubkey", sig.getRootPublicKey().isEqual(pubkey));
+        assertTrue("sig verifies", wallet.deriveTreeKey(keyIndex).verify(built.getTransactionID(), sig));
+
+        //And the txnimport data round-trips byte-identically with the state intact.
+        TxnRow back = TxnRow.convertMiniDataVersion(built.getImportData());
+        assertTrue("round-trip byte-identical",
+                built.getImportData().isEqual(MiniData.getMiniDataVersion(back)));
+        assertEquals("round-trip keeps state", 2, back.getTransaction().getCompleteState().size());
+    }
 }
