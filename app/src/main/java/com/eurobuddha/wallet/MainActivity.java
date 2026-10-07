@@ -49,7 +49,8 @@ public class MainActivity extends AppCompatActivity {
     public static final int TAB_BALANCES = 0;
     public static final int TAB_SEND     = 1;
     public static final int TAB_RECEIVE  = 2;
-    public static final int TAB_SETTINGS = 3;
+    public static final int TAB_HISTORY  = 3;
+    public static final int TAB_SETTINGS = 4;
 
     // --- wallet core ---
     private WalletSession mSession;
@@ -82,10 +83,11 @@ public class MainActivity extends AppCompatActivity {
     private TextView mBlockView;
     private LinearLayout mPairingBanner;
     private FrameLayout mContent;
-    private TextView mTabBalances, mTabSend, mTabReceive, mTabSettings;
+    private TextView mTabBalances, mTabSend, mTabReceive, mTabHistory, mTabSettings;
     private BalancesView mBalancesView;
     private SendView mSendView;
     private ReceiveView mReceiveView;
+    private HistoryView mHistoryView;
     private SettingsView mSettingsView;
     private int mTab = TAB_BALANCES;
 
@@ -570,6 +572,7 @@ public class MainActivity extends AppCompatActivity {
         mBalancesView = new BalancesView(this);
         mSendView     = new SendView(this);
         mReceiveView  = new ReceiveView(this);
+        mHistoryView  = new HistoryView(this);
         mSettingsView = new SettingsView(this);
         goToTab(TAB_BALANCES);
     }
@@ -632,10 +635,12 @@ public class MainActivity extends AppCompatActivity {
         mTabBalances = tab("BALANCES", TAB_BALANCES);
         mTabSend     = tab("SEND", TAB_SEND);
         mTabReceive  = tab("RECEIVE", TAB_RECEIVE);
+        mTabHistory  = tab("HISTORY", TAB_HISTORY);
         mTabSettings = tab("SETTINGS", TAB_SETTINGS);
         bar.addView(mTabBalances, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(mTabSend, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(mTabReceive, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        bar.addView(mTabHistory, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(mTabSettings, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         return bar;
     }
@@ -659,6 +664,7 @@ public class MainActivity extends AppCompatActivity {
         switch (zTab) {
             case TAB_SEND:     view = mSendView; break;
             case TAB_RECEIVE:  view = mReceiveView; break;
+            case TAB_HISTORY:  view = mHistoryView; break;
             case TAB_SETTINGS: view = mSettingsView; break;
             default:           view = mBalancesView;
         }
@@ -670,8 +676,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void paintTabs() {
-        TextView[] tabs = {mTabBalances, mTabSend, mTabReceive, mTabSettings};
-        int[] ids = {TAB_BALANCES, TAB_SEND, TAB_RECEIVE, TAB_SETTINGS};
+        TextView[] tabs = {mTabBalances, mTabSend, mTabReceive, mTabHistory, mTabSettings};
+        int[] ids = {TAB_BALANCES, TAB_SEND, TAB_RECEIVE, TAB_HISTORY, TAB_SETTINGS};
         for (int i = 0; i < tabs.length; i++) {
             boolean sel = mTab == ids[i];
             tabs[i].setTextColor(sel ? Design.accent() : Design.dim());
@@ -816,6 +822,7 @@ public class MainActivity extends AppCompatActivity {
         switch (mTab) {
             case TAB_SEND:     if (mSendView != null) mSendView.refresh(); break;
             case TAB_RECEIVE:  if (mReceiveView != null) mReceiveView.refresh(); break;
+            case TAB_HISTORY:  if (mHistoryView != null) mHistoryView.refresh(); break;
             case TAB_SETTINGS: if (mSettingsView != null) mSettingsView.refresh(); break;
             default:           if (mBalancesView != null) mBalancesView.refresh();
         }

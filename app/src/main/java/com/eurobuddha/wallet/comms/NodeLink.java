@@ -108,6 +108,14 @@ public class NodeLink {
         mApi.cmd(cmd, zCb);
     }
 
+    /**
+     * One page of relevant TxPoW history: {@code history relevant:true max: offset:}. "Relevant"
+     * covers the node wallet AND our tracked scripts — the caller filters to our own addresses.
+     */
+    public void history(int zMax, int zOffset, NodeApi.Cb zCb) {
+        mApi.cmd("history relevant:true max:" + zMax + " offset:" + zOffset, zCb);
+    }
+
     /** Current chain tip block. */
     public void block(NodeApi.Cb zCb) {
         mApi.cmd("block", zCb);
