@@ -208,6 +208,39 @@ public class TxnFactory {
                 storestate, state, token, zKeyIndex);
     }
 
+    /**
+     * Build an {@link InputCoin} from a BYTE-EXACT chain {@link Coin} (a {@code coinexport}
+     * CoinProof's coin). This is the REQUIRED path for custom-token inputs: the token descriptor
+     * and state here are the chain's own bytes, so the recomputed tokenid always matches —
+     * unlike {@link #fromCoinJson}, whose JSON round-trip is lossy for object token names.
+     */
+    public static InputCoin fromExportedCoin(Coin zCoin, int zKeyIndex) {
+        return new InputCoin(zCoin.getCoinID(), zCoin.getAddress(), zCoin.getAmount(),
+                zCoin.getTokenID(), zCoin.getMMREntryNumber(), zCoin.getBlockCreated(),
+                zCoin.storeState(), zCoin.getState(), zCoin.getToken(), zKeyIndex);
+    }
+
+    /**
+     * LOUD token-integrity gate, run on every custom-token input before signing. A token whose
+     * recomputed id mismatches its coin's tokenid builds a transaction that consensus rejects
+     * AFTER an apparently-successful async txnpost — i.e. it fails silently on-chain and burns a
+     * one-time signature. Refusing here turns that into an immediate, explained error.
+     */
+    private static void assertTokenIntegrity(InputCoin zCoin) {
+        if (isMinima(zCoin.getTokenID())) return;
+        if (zCoin.getToken() == null) {
+            throw new IllegalArgumentException("Token coin " + zCoin.getCoinID().to0xString()
+                    + " has no token descriptor — resolve it via coinexport before building");
+        }
+        if (!zCoin.getToken().getTokenID().isEqual(zCoin.getTokenID())) {
+            throw new IllegalArgumentException("Token descriptor mismatch on coin "
+                    + zCoin.getCoinID().to0xString() + ": descriptor recomputes to "
+                    + zCoin.getToken().getTokenID().to0xString() + " but the coin's tokenid is "
+                    + zCoin.getTokenID().to0xString()
+                    + " — rebuild this input via coinexport (lossy JSON token name)");
+        }
+    }
+
     /** Reconstruct a {@link Token} from a {@code Coin.toJSON().token} sub-object. */
     private static Token parseToken(JSONObject zTok) {
         MiniData  tcoinid = new MiniData(getStr(zTok, "coinid"));
@@ -432,6 +465,9 @@ public class TxnFactory {
                     + " (derived " + derived.to0xString() + ")");
         }
 
+        //LOUD gate: a mismatched token descriptor must fail HERE, not silently on-chain.
+        assertTokenIntegrity(zCoin);
+
         Transaction transaction = new Transaction();
         Witness witness = new Witness();
 
@@ -540,6 +576,9 @@ public class TxnFactory {
                         + " does not match wallet key index " + ic.getKeyIndex()
                         + " (derived " + derived.to0xString() + ")");
             }
+
+            //LOUD gate: a mismatched token descriptor must fail HERE, not silently on-chain.
+            assertTokenIntegrity(ic);
 
             String addr = ic.getAddress().to0xString();
             if (!distinctAddrs.contains(addr)) {

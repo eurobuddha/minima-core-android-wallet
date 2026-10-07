@@ -275,8 +275,8 @@ public class SendView extends BaseView {
             if (change.isMore(MiniNumber.ZERO)) rev.append("Change: ").append(change).append(" (to you)\n");
             if (isMinima()) rev.append("Burn: ").append(burn).append("\n");
 
-            confirmAndSend(rev.toString(), sel, () ->
-                    act.factory().buildSend(toInputs(sel), recipient, amountRaw, tokenIdData(), burn, newId()));
+            withResolvedInputs(sel, inputs -> confirmAndSend(rev.toString(), sel, () ->
+                    act.factory().buildSend(inputs, recipient, amountRaw, tokenIdData(), burn, newId())));
         } catch (Exception e) {
             err(e);
         }
@@ -302,8 +302,8 @@ public class SendView extends BaseView {
                     + (isMinima() ? "Burn: " + burn + "\n" : "");
 
             final int fn = n;
-            confirmAndSend(rev, sel, () ->
-                    act.factory().buildSplit(toInputs(sel), amountRaw, fn, tokenIdData(), burn, newId()));
+            withResolvedInputs(sel, inputs -> confirmAndSend(rev, sel, () ->
+                    act.factory().buildSplit(inputs, amountRaw, fn, tokenIdData(), burn, newId())));
         } catch (Exception e) {
             err(e);
         }
@@ -324,8 +324,8 @@ public class SendView extends BaseView {
                     + "Output: " + out + "\n"
                     + (isMinima() ? "Burn: " + burn + "\n" : "");
 
-            confirmAndSend(rev, sel, () ->
-                    act.factory().buildConsolidate(toInputs(sel), tokenIdData(), burn, newId()));
+            withResolvedInputs(sel, inputs -> confirmAndSend(rev, sel, () ->
+                    act.factory().buildConsolidate(inputs, tokenIdData(), burn, newId())));
         } catch (Exception e) {
             err(e);
         }
@@ -437,6 +437,23 @@ public class SendView extends BaseView {
     }
 
     private MiniNumber sumRaw(List<JSONObject> zSel) { return CoinSelector.sumRaw(zSel); }
+
+    /**
+     * Hand {@code zGo} the InputCoins for this selection SAFELY: native Minima converts locally,
+     * custom-token coins are fetched BYTE-EXACT from the node (coinexport) — the coins-JSON token
+     * descriptor is lossy for object names and consensus rejects the mismatch silently after
+     * txnpost. Nothing signs here; signing stays behind the user's confirm.
+     */
+    private void withResolvedInputs(List<JSONObject> zSel,
+                                    java.util.function.Consumer<List<TxnFactory.InputCoin>> zGo) {
+        if (isMinima()) { zGo.accept(toInputs(zSel)); return; }
+        act.resolveInputs(zSel, new MainActivity.InputsCb() {
+            @Override public void onResolved(List<TxnFactory.InputCoin> inputs) { zGo.accept(inputs); }
+            @Override public void onError(String message) {
+                Toast.makeText(act, "Could not prepare the coins: " + message, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
 
     /** Map selected bundled-JSON coins → factory InputCoins, each at its OWN wallet key index. */
     private List<TxnFactory.InputCoin> toInputs(List<JSONObject> zSel) {

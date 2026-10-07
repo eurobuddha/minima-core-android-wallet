@@ -372,4 +372,64 @@ public class TxnFactoryTest {
                 built.getImportData().isEqual(MiniData.getMiniDataVersion(back)));
         assertEquals("round-trip keeps state", 2, back.getTransaction().getCompleteState().size());
     }
+
+    /**
+     * THE silent-failure regression (proven live 2026-10-07): a token descriptor whose recomputed
+     * id mismatches the coin's tokenid builds a transaction consensus rejects AFTER a successful
+     * async txnpost — nothing on chain, no error, one WOTS leaf burned. The factory must refuse
+     * LOUDLY before signing, for both the NFT path and the ordinary send path.
+     */
+    @Test
+    public void mismatchedTokenDescriptorIsRefusedBeforeSigning() {
+        InMemoryKeyUses uses = new InMemoryKeyUses();
+        WalletCore wallet = new WalletCore(PHRASE, uses);
+        TxnFactory factory = new TxnFactory(wallet);
+        MiniData ourAddr = wallet.getAddress(0).getAddressData();
+
+        org.minima.objects.Token token = new org.minima.objects.Token(
+                cid("0xC022222222222222222222222222222222222222222222222222222222222222"),
+                MiniNumber.ONE, new MiniNumber("10"),
+                new org.minima.objects.base.MiniString("{\"name\":\"ReorderedName\"}"),
+                new org.minima.objects.base.MiniString("RETURN TRUE"),
+                MiniNumber.ZERO);
+
+        //The coin CLAIMS a different tokenid than the descriptor recomputes to (the lossy-JSON case).
+        MiniData wrongTokenId = cid("0xDEAD00000000000000000000000000000000000000000000000000000000BEEF");
+        TxnFactory.InputCoin bad = new TxnFactory.InputCoin(
+                cid("0xEE11111111111111111111111111111111111111111111111111111111111111"),
+                ourAddr, MiniNumber.ONE, wrongTokenId,
+                new MMREntryNumber(7), new MiniNumber("5"),
+                true, null, token, 0);
+
+        try {
+            factory.buildNftTransfer(bad, wallet.getAddress(1).getMinimaAddress(), "bad-nft");
+            org.junit.Assert.fail("NFT transfer must refuse a mismatched token descriptor");
+        } catch (IllegalArgumentException expected) {
+            assertTrue("names the mismatch", expected.getMessage().contains("mismatch"));
+        }
+        assertEquals("NOTHING was signed", 0, uses.currentUses(0));
+
+        try {
+            List<TxnFactory.InputCoin> in = new ArrayList<>();
+            in.add(bad);
+            factory.buildSend(in, wallet.getAddress(1).getMinimaAddress(),
+                    MiniNumber.ONE, wrongTokenId, MiniNumber.ZERO, "bad-send");
+            org.junit.Assert.fail("send must refuse a mismatched token descriptor");
+        } catch (IllegalArgumentException expected) {
+            assertTrue("names the mismatch", expected.getMessage().contains("mismatch"));
+        }
+        assertEquals("still NOTHING signed", 0, uses.currentUses(0));
+
+        //And the byte-exact path: an exported chain Coin converts cleanly and builds.
+        org.minima.objects.Coin chainCoin = new org.minima.objects.Coin(
+                cid("0xEE22222222222222222222222222222222222222222222222222222222222222"),
+                ourAddr, MiniNumber.ONE, token.getTokenID(), true);
+        chainCoin.setMMREntryNumber(new MMREntryNumber(8));
+        chainCoin.setBlockCreated(new MiniNumber("6"));
+        chainCoin.setToken(token);
+        TxnFactory.InputCoin good = TxnFactory.fromExportedCoin(chainCoin, 0);
+        TxnFactory.BuiltTxn ok = factory.buildNftTransfer(good,
+                wallet.getAddress(1).getMinimaAddress(), "good-nft");
+        assertEquals("exported coin builds and signs", 1, ok.getNumSignatures());
+    }
 }

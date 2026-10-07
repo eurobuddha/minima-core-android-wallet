@@ -136,6 +136,17 @@ public class NodeLink {
         mApi.cmd("tokens tokenid:" + zTokenId, zCb);
     }
 
+    /**
+     * BYTE-EXACT coin fetch: {@code coinexport coinid:} returns the serialized CoinProof hex
+     * ({@code response.data}) — the coin exactly as the chain holds it, token descriptor and
+     * state included. REQUIRED when building a custom-token spend locally: the {@code coins}
+     * JSON round-trip is lossy for a JSON-object token name (key order / spacing), and the
+     * recomputed tokenid then fails consensus SILENTLY after txnpost (async mining).
+     */
+    public void coinExport(String zCoinId, NodeApi.Cb zCb) {
+        mApi.cmd("coinexport coinid:" + zCoinId, zCb);
+    }
+
     // ---- restore historic coins (non-admin) --------------------------------------------------
 
     /** Validate an exported coin proof against the local MMR (read-only): {@code coincheck data:<hex>}. */

@@ -900,6 +900,72 @@ public class MainActivity extends AppCompatActivity {
 
     /** The wallet key index owning this coin's 0x address, or null if the coin is not ours. */
     public Integer keyIndexForAddress(String zAddr0x) { return mBook.keyIndexFor(zAddr0x); }
+
+    /** Callbacks for {@link #resolveInputs}. */
+    public interface InputsCb {
+        void onResolved(java.util.List<TxnFactory.InputCoin> zInputs);
+        void onError(String zMessage);
+    }
+
+    /**
+     * Turn selected coins (bundled coins-JSON objects) into InputCoins SAFELY: native-Minima
+     * coins convert directly, but every CUSTOM-TOKEN coin is fetched byte-exact from the node via
+     * {@code coinexport} — the coins-JSON round-trip is lossy for object token names, and a
+     * reconstructed token whose id mismatches builds a transaction that consensus rejects
+     * silently after txnpost. Sequential, async; nothing here signs.
+     */
+    public void resolveInputs(final java.util.List<org.minima.utils.json.JSONObject> zCoins,
+                              final InputsCb zCb) {
+        resolveNext(zCoins, 0, new java.util.ArrayList<>(), zCb);
+    }
+
+    private void resolveNext(final java.util.List<org.minima.utils.json.JSONObject> zCoins,
+                             final int zIdx, final java.util.List<TxnFactory.InputCoin> zOut,
+                             final InputsCb zCb) {
+        if (zIdx >= zCoins.size()) { zCb.onResolved(zOut); return; }
+        org.minima.utils.json.JSONObject coin = zCoins.get(zIdx);
+        Object addrObj = coin.get("address");
+        final Integer ki = keyIndexForAddress(addrObj == null ? "" : String.valueOf(addrObj));
+        if (ki == null) {
+            zCb.onError("Coin address is not in our wallet: " + addrObj);
+            return;
+        }
+        String tokenid = String.valueOf(coin.get("tokenid"));
+        if (Util.isMinima(tokenid)) {
+            try {
+                zOut.add(TxnFactory.fromCoinJson(coin, ki));
+            } catch (Exception e) {
+                zCb.onError("Coin parse failed: " + e.getMessage());
+                return;
+            }
+            resolveNext(zCoins, zIdx + 1, zOut, zCb);
+            return;
+        }
+        final String coinid = String.valueOf(coin.get("coinid"));
+        mNode.coinExport(coinid, new NodeApi.Cb() {
+            @Override public void onResult(org.json.JSONObject json) {
+                try {
+                    org.json.JSONObject r = json.optJSONObject("response");
+                    String hex = r == null ? "" : r.optString("data", "");
+                    if (hex.isEmpty()) throw new IllegalStateException("empty coinexport reply");
+                    org.minima.objects.CoinProof cp = org.minima.objects.CoinProof
+                            .convertMiniDataVersion(new org.minima.objects.base.MiniData(hex));
+                    if (cp == null || cp.getCoin() == null
+                            || !cp.getCoin().getCoinID().to0xString().equals(coinid)) {
+                        throw new IllegalStateException("coinexport returned a different coin");
+                    }
+                    zOut.add(TxnFactory.fromExportedCoin(cp.getCoin(), ki));
+                } catch (Exception e) {
+                    zCb.onError("coinexport failed for " + coinid + ": " + e.getMessage());
+                    return;
+                }
+                resolveNext(zCoins, zIdx + 1, zOut, zCb);
+            }
+            @Override public void onError(String message) {
+                zCb.onError("coinexport failed for " + coinid + ": " + message);
+            }
+        });
+    }
     public String blockLabel()     { return mBlock.isEmpty() ? "—" : "#" + mBlock; }
     public String circulatingSupply() { return ""; }
 

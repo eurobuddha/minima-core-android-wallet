@@ -55,8 +55,18 @@ import com.eurobuddha.wallet.comms.NodeApi;
  */
 public class NftView extends BaseView {
 
-    /** coinids broadcast this session and not yet confirmed spent (dropped from the coins list). */
-    private static final HashSet<String> PENDING = new HashSet<>();
+    /** coinid → broadcast time, for coins sent this session and not yet confirmed spent. A txn
+     *  can fail consensus SILENTLY after txnpost, so entries expire after a TTL and the item
+     *  becomes sendable again instead of being stuck "SENDING" forever. */
+    private static final java.util.HashMap<String, Long> PENDING = new java.util.HashMap<>();
+    private static final long PENDING_TTL_MS = 10 * 60_000;
+
+    private static boolean isPending(String zCoinId) {
+        Long t = PENDING.get(zCoinId);
+        if (t == null) return false;
+        if (System.currentTimeMillis() - t > PENDING_TTL_MS) { PENDING.remove(zCoinId); return false; }
+        return true;
+    }
 
     private final LinearLayout grid;
     private final TextView status;
@@ -159,7 +169,7 @@ public class NftView extends BaseView {
             }
         }
         // A pending coin that has left the live list is confirmed spent — stop tracking it.
-        PENDING.retainAll(liveCoinIds);
+        PENDING.keySet().retainAll(liveCoinIds);
 
         List<Group> list = new ArrayList<>(groups.values());
         for (Group g : list) {
@@ -315,7 +325,7 @@ public class NftView extends BaseView {
 
     private View itemTile(final Group g, final JSONObject coin) {
         final String coinid = Nft.str(coin, "coinid");
-        final boolean pending = PENDING.contains(coinid);
+        final boolean pending = isPending(coinid);
         final int idx = Nft.itemIndex(coin);
         final int ordinal = g.coins.indexOf(coin) + 1;
         final String itemName = idx >= 0 ? "#" + idx : "item " + ordinal;
@@ -442,7 +452,7 @@ public class NftView extends BaseView {
         final Runnable show = () -> {
             JSONObject coin = g.coins.get(pos[0]);
             int idx = Nft.itemIndex(coin);
-            boolean pending = PENDING.contains(Nft.str(coin, "coinid"));
+            boolean pending = isPending(Nft.str(coin, "coinid"));
             title.setText(g.meta.name + (idx >= 0 ? "  #" + idx : ""));
             counter.setText((pos[0] + 1) + " / " + g.coins.size());
             send.setText(pending ? "Sending…" : "Send");
@@ -485,7 +495,7 @@ public class NftView extends BaseView {
         sb.append(g.meta.name).append(idx >= 0 ? "  #" + idx : "").append("\n");
         sb.append(g.meta.stateNft ? "StateNFT (locked edition)" : "NFT").append("\n");
         if (!g.meta.mode.isEmpty()) sb.append("artwork mode: ").append(g.meta.mode).append("\n");
-        if (PENDING.contains(Nft.str(coin, "coinid"))) {
+        if (isPending(Nft.str(coin, "coinid"))) {
             sb.append("status: SENDING — broadcast, awaiting chain confirmation\n");
         }
         if (Nft.isUnstampedLocked(g.meta, coin)) {
@@ -554,7 +564,7 @@ public class NftView extends BaseView {
     /** The reason this coin cannot be sent right now, or null when it can. */
     private String sendGuard(Group g, JSONObject coin) {
         String coinid = Nft.str(coin, "coinid");
-        if (PENDING.contains(coinid)) {
+        if (isPending(coinid)) {
             return "This item is already being sent — waiting for the chain to confirm";
         }
         if (Nft.isUnstampedLocked(g.meta, coin)) {
@@ -616,23 +626,33 @@ public class NftView extends BaseView {
             if (ki == null) throw new IllegalStateException("Coin address is not in our wallet: " + Nft.str(coin, "address"));
             final int keyIndex = ki;
             final String coinid = Nft.str(coin, "coinid");
-            final TxnFactory.InputCoin in = TxnFactory.fromCoinJson(coin, keyIndex);
 
-            String review = "NFT: " + g.meta.name + (idx >= 0 ? " #" + idx : "") + "\n"
-                    + (g.meta.stateNft ? "StateNFT — state replayed, sent whole\n" : "Sent whole (indivisible)\n")
-                    + "To: " + recipient + "\n"
-                    + "coinid: " + coinid + "\n"
-                    + selfSendNotice(recipient);
-
-            act.confirmSignAndPublish(review, keyIndex,
-                    () -> act.factory().buildNftTransfer(in, recipient, Util.newTxnId()),
-                    () -> {
-                        PENDING.add(coinid);
-                        // The open dialogs now describe coins that changed — close rather than go stale.
-                        if (mViewer != null) mViewer.dismiss();
-                        if (mBrowser != null) mBrowser.dismiss();
-                        refresh();
-                    });
+            //Resolve the input BYTE-EXACT from the node (coinexport) before anything signs — the
+            //coins-JSON token descriptor is lossy and consensus would reject the txn silently.
+            List<org.minima.utils.json.JSONObject> one = new ArrayList<>();
+            one.add(coin);
+            act.resolveInputs(one, new MainActivity.InputsCb() {
+                @Override public void onResolved(List<TxnFactory.InputCoin> inputs) {
+                    final TxnFactory.InputCoin in = inputs.get(0);
+                    String review = "NFT: " + g.meta.name + (idx >= 0 ? " #" + idx : "") + "\n"
+                            + (g.meta.stateNft ? "StateNFT — state replayed, sent whole\n" : "Sent whole (indivisible)\n")
+                            + "To: " + recipient + "\n"
+                            + "coinid: " + coinid + "\n"
+                            + selfSendNotice(recipient);
+                    act.confirmSignAndPublish(review, keyIndex,
+                            () -> act.factory().buildNftTransfer(in, recipient, Util.newTxnId()),
+                            () -> {
+                                PENDING.put(coinid, System.currentTimeMillis());
+                                // The open dialogs now describe coins that changed — close rather than go stale.
+                                if (mViewer != null) mViewer.dismiss();
+                                if (mBrowser != null) mBrowser.dismiss();
+                                refresh();
+                            });
+                }
+                @Override public void onError(String message) {
+                    Toast.makeText(act, "Could not prepare the coin: " + message, Toast.LENGTH_LONG).show();
+                }
+            });
         } catch (Exception e) {
             Toast.makeText(act, String.valueOf(e.getMessage()), Toast.LENGTH_LONG).show();
         }
@@ -646,7 +666,7 @@ public class NftView extends BaseView {
         final List<JSONObject> sendable = new ArrayList<>();
         int pending = 0, unstamped = 0;
         for (JSONObject c : g.coins) {
-            if (PENDING.contains(Nft.str(c, "coinid"))) { pending++; continue; }
+            if (isPending(Nft.str(c, "coinid"))) { pending++; continue; }
             if (Nft.isUnstampedLocked(g.meta, c)) { unstamped++; continue; }
             sendable.add(c);
         }
@@ -743,29 +763,43 @@ public class NftView extends BaseView {
         progress.setText("Item " + (idx >= 0 ? "#" + idx : "") + "  (" + (i + 1) + " of " + coins.size() + ")\n"
                 + "Signing and broadcasting…");
 
-        final TxnFactory.BuiltTxn built;
-        try {
-            Integer ki = act.keyIndexForAddress(Nft.str(coin, "address"));
-            if (ki == null) throw new IllegalStateException("Coin address not ours: " + Nft.str(coin, "address"));
-            TxnFactory.InputCoin in = TxnFactory.fromCoinJson(coin, ki);
-            try {
-                built = act.factory().buildNftTransfer(in, recipient, Util.newTxnId());
-            } finally {
-                // Same contract as SendView: the snapshot must never lag a (partial) sign.
-                try { act.vault().syncKeyUses(); }
-                catch (Exception snapEx) {
-                    android.util.Log.w("wallet", "keyuses snapshot resync failed (safe to lag)", snapEx);
+        //Resolve this item's input BYTE-EXACT (coinexport) before signing.
+        List<org.minima.utils.json.JSONObject> one = new ArrayList<>();
+        one.add(coin);
+        act.resolveInputs(one, new MainActivity.InputsCb() {
+            @Override public void onResolved(List<TxnFactory.InputCoin> inputs) {
+                final TxnFactory.BuiltTxn built;
+                try {
+                    try {
+                        built = act.factory().buildNftTransfer(inputs.get(0), recipient, Util.newTxnId());
+                    } finally {
+                        // Same contract as SendView: the snapshot must never lag a (partial) sign.
+                        try { act.vault().syncKeyUses(); }
+                        catch (Exception snapEx) {
+                            android.util.Log.w("wallet", "keyuses snapshot resync failed (safe to lag)", snapEx);
+                        }
+                    }
+                } catch (Exception e) {
+                    finishCollectionSend(coins.size(), i, txpowids,
+                            "item " + (idx >= 0 ? "#" + idx : i + 1) + ": " + e.getMessage(), pd);
+                    return;
                 }
+                publishOne(g, coins, recipient, i, txpowids, progress, pd, cancelled, coinid, idx, built);
             }
-        } catch (Exception e) {
-            finishCollectionSend(coins.size(), i, txpowids,
-                    "item " + (idx >= 0 ? "#" + idx : i + 1) + ": " + e.getMessage(), pd);
-            return;
-        }
+            @Override public void onError(String message) {
+                finishCollectionSend(coins.size(), i, txpowids,
+                        "item " + (idx >= 0 ? "#" + idx : i + 1) + " could not be prepared: " + message, pd);
+            }
+        });
+    }
 
+    private void publishOne(final Group g, final List<JSONObject> coins, final String recipient,
+                            final int i, final List<String> txpowids, final TextView progress,
+                            final androidx.appcompat.app.AlertDialog pd, final boolean[] cancelled,
+                            final String coinid, final int idx, final TxnFactory.BuiltTxn built) {
         act.node().publish(built, new NodeApi.Cb() {
             @Override public void onResult(org.json.JSONObject json) {
-                PENDING.add(coinid);
+                PENDING.put(coinid, System.currentTimeMillis());
                 txpowids.add(Util.extractTxpowid(json, built.getID()));
                 sendNext(g, coins, recipient, i + 1, txpowids, progress, pd, cancelled);
             }
