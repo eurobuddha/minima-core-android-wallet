@@ -12,7 +12,7 @@
     <!-- Android 11+ package visibility: needed to deliver our targeted (setPackage) IPC
          broadcasts to the Minima Core node app (non-admin relay). -->
     <queries>
-        <package android:name="org.minimarex.minimacore" />
+        <package android:name="com.eurobuddha.minimacore" />
     </queries>
 
     <application
