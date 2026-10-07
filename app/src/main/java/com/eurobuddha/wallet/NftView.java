@@ -271,14 +271,28 @@ public class NftView extends BaseView {
         cell.addView(art, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
+        // Caption row: "#idx" + a per-item Send, right where the items are browsed.
+        LinearLayout caption = new LinearLayout(act);
+        caption.setOrientation(LinearLayout.HORIZONTAL);
+        caption.setGravity(Gravity.CENTER_VERTICAL);
         TextView label = new TextView(act);
         label.setText(idx >= 0 ? "#" + idx : "item");
         label.setTextColor(Design.text());
         label.setTextSize(13f);
         label.setPadding(dp(2), dp(4), dp(2), 0);
-        cell.addView(label);
+        caption.addView(label, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView sendOne = new TextView(act);
+        sendOne.setText("SEND");
+        sendOne.setTextSize(12f);
+        sendOne.setLetterSpacing(0.06f);
+        sendOne.setTypeface(Design.typefaceBold(), Typeface.BOLD);
+        sendOne.setTextColor(Design.accent());
+        sendOne.setPadding(dp(10), dp(4), dp(4), dp(4));
+        sendOne.setOnClickListener(v -> promptSendItem(g, coin));
+        caption.addView(sendOne);
+        cell.addView(caption);
 
-        cell.setOnClickListener(v -> openViewer(g, coin));
+        cell.setOnClickListener(v -> openViewer(g, g.coins.indexOf(coin)));
         return cell;
     }
 
@@ -286,20 +300,18 @@ public class NftView extends BaseView {
     // Item viewer (full screen, pinch-zoom, full resolution)
     // =============================================================================================
 
-    private void openViewer(final Group g, final JSONObject coin) {
+    private void openViewer(final Group g, int zStartPos) {
         final Dialog d = new Dialog(act, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        final int idx = Nft.itemIndex(coin);
+        final int[] pos = { Math.max(0, zStartPos) };
 
         FrameLayout frame = new FrameLayout(act);
         frame.setBackgroundColor(Color.BLACK);
 
-        ZoomImageView zoom = new ZoomImageView(act);
-        zoom.setImageBitmap(Identicon.forToken(g.tokenid + idx, dp(320)));
-        loadArt(g, coin, zoom, true);   // full resolution (bounded 1600px)
+        final ZoomImageView zoom = new ZoomImageView(act);
         frame.addView(zoom, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
-        // Top bar: back + title.
+        // Top bar: back + title + position counter.
         LinearLayout top = new LinearLayout(act);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -312,16 +324,20 @@ public class NftView extends BaseView {
         back.setPadding(dp(4), 0, dp(14), 0);
         back.setOnClickListener(v -> d.dismiss());
         top.addView(back);
-        TextView title = new TextView(act);
-        title.setText(g.meta.name + (idx >= 0 ? "  #" + idx : ""));
+        final TextView title = new TextView(act);
         title.setTextColor(Color.WHITE);
         title.setTypeface(Design.typefaceBold(), Typeface.BOLD);
         title.setTextSize(16f);
-        top.addView(title);
+        top.addView(title, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        final TextView counter = new TextView(act);
+        counter.setTextColor(Color.WHITE);
+        counter.setTextSize(13f);
+        counter.setPadding(dp(8), 0, dp(8), 0);
+        top.addView(counter);
         frame.addView(top, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
-        // Bottom bar: Details · Send.
+        // Bottom bar: Details · Send — always acting on the CURRENT item.
         LinearLayout bottom = new LinearLayout(act);
         bottom.setOrientation(LinearLayout.HORIZONTAL);
         bottom.setBackgroundColor(0x99000000);
@@ -330,17 +346,36 @@ public class NftView extends BaseView {
         details.setText("Details");
         details.setTextColor(Color.WHITE);
         details.setBackgroundColor(Color.TRANSPARENT);
-        details.setOnClickListener(v -> showDetails(g, coin));
+        details.setOnClickListener(v -> showDetails(g, g.coins.get(pos[0])));
         bottom.addView(details, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         Button send = new Button(act);
         send.setText("Send");
         send.setTextColor(Design.onAccent());
         send.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Design.accent()));
-        send.setOnClickListener(v -> promptSendItem(g, coin));
+        send.setOnClickListener(v -> promptSendItem(g, g.coins.get(pos[0])));
         bottom.addView(send, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         frame.addView(bottom, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
 
+        // Show one item in place (image, title, counter) — called on open and on every swipe.
+        final Runnable show = () -> {
+            JSONObject coin = g.coins.get(pos[0]);
+            int idx = Nft.itemIndex(coin);
+            title.setText(g.meta.name + (idx >= 0 ? "  #" + idx : ""));
+            counter.setText((pos[0] + 1) + " / " + g.coins.size());
+            zoom.setImageBitmap(Identicon.forToken(g.tokenid + idx, dp(320)));
+            loadArt(g, coin, zoom, true);   // full resolution (bounded 1600px)
+        };
+
+        // Swipe left/right at 1x = next/previous item; while zoomed, dragging pans instead.
+        zoom.setSwipeListener(next -> {
+            int to = pos[0] + (next ? 1 : -1);
+            if (to < 0 || to >= g.coins.size()) return;   // ends stop — no wrap surprise
+            pos[0] = to;
+            show.run();
+        });
+
+        show.run();
         d.setContentView(frame);
         d.show();
     }

@@ -28,6 +28,14 @@ public class ZoomImageView extends AppCompatImageView {
     private final ScaleGestureDetector mScaleDetector;
     private final GestureDetector mGestureDetector;
 
+    /** Fired on a horizontal fling while NOT zoomed in — gallery-style next/previous. */
+    public interface SwipeListener { void onSwipe(boolean zNext); }
+    private SwipeListener mSwipeListener;
+
+    public void setSwipeListener(SwipeListener zListener) {
+        mSwipeListener = zListener;
+    }
+
     public ZoomImageView(Context zContext) {
         super(zContext);
         setScaleType(ScaleType.MATRIX);
@@ -43,6 +51,15 @@ public class ZoomImageView extends AppCompatImageView {
                 mMatrix.postTranslate(-dx, -dy);
                 clamp();
                 setImageMatrix(mMatrix);
+                return true;
+            }
+            @Override public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
+                // Only when fit-to-view: zoomed in, a horizontal drag means PAN, never page-turn.
+                if (mSwipeListener == null || mScale > 1.01f || e1 == null) return false;
+                float dx = e2.getX() - e1.getX();
+                float density = getResources().getDisplayMetrics().density;
+                if (Math.abs(dx) < 60 * density || Math.abs(vx) < Math.abs(vy)) return false;
+                mSwipeListener.onSwipe(dx < 0);   // finger left → next item
                 return true;
             }
             @Override public boolean onDoubleTap(MotionEvent e) {
