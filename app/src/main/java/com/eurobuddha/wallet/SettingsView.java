@@ -606,14 +606,36 @@ public class SettingsView extends BaseView {
 
     /** Step 4 — scripts address:<ours> (is our RETURN SIGNEDBY script TRACKED / relevant?). */
     private void diagScripts(final NodeLink node, final String addr0x) {
-        final String cmd = "scripts address:" + addr0x;
-        diagLine("[4] " + cmd);
+        final String cmd = "scripts";
+        diagLine("[4] " + cmd + " (cross-check ALL " + AddressBook.SIZE + " base addresses)");
         node.raw(cmd, new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 diagLine("  status: " + json.optBoolean("status", false));
-                diagLine("  (a hit here == our script is tracked; empty == run the wallet once while "
-                        + "paired so it calls newscript trackall:true)");
-                diagRaw(json);
+                AddressBook book = act.addressBook();
+                org.json.JSONArray arr = json.optJSONArray("response");
+                java.util.HashSet<String> tracked = new java.util.HashSet<>();
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        org.json.JSONObject row = arr.optJSONObject(i);
+                        if (row != null && row.optBoolean("track", row.optBoolean("trackall", true))) {
+                            tracked.add(row.optString("address", ""));
+                        }
+                    }
+                }
+                int derived = book.derivedCount();
+                StringBuilder missing = new StringBuilder();
+                int hits = 0;
+                for (int i = 0; i < derived; i++) {
+                    if (tracked.contains(book.addr0x(i))) hits++;
+                    else missing.append(missing.length() == 0 ? "" : ", ").append(i);
+                }
+                diagLine("  derived locally : " + derived + " / " + AddressBook.SIZE);
+                diagLine("  tracked on node : " + hits + " / " + derived);
+                if (missing.length() > 0) {
+                    diagLine("  NOT tracked (key index): " + missing);
+                    diagLine("  -> relaunch the wallet while paired to re-register, THEN resync the");
+                    diagLine("     node if you expect coins that pre-date the tracking.");
+                }
                 diagCheckAddress(node, addr0x);
             }
             @Override public void onError(String message) {

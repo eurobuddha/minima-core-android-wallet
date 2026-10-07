@@ -61,6 +61,12 @@ public class MainActivity extends AppCompatActivity {
     private String mAddrMx;
     private AddressBook mBook;
 
+    /** Derive/track status banner (visible until all 64 addresses are derived AND registered). */
+    private TextView mStatusBanner;
+
+    /** How many base scripts the node has confirmed tracked this session (contiguous from 0). */
+    private int mTrackOk = 0;
+
     // --- transport ---
     private NodeLink mNode;
     private boolean mPaired = false;
@@ -490,16 +496,38 @@ public class MainActivity extends AppCompatActivity {
         // Derive any missing base addresses (all 64 on first run — expensive) off the UI thread,
         // then re-track + reload so coins at ALL our addresses show up.
         if (!mBook.isComplete()) {
+            mBook.setDeriveListener(n -> runOnUiThread(this::updateStatusBanner));
             new Thread(() -> {
                 mBook.deriveMissing();
                 runOnUiThread(this::onAddressBookReady);
             }, "addressbook-derive").start();
+        }
+        updateStatusBanner();
+    }
+
+    /**
+     * Repaint the derive/track banner: "deriving n/64" while keys are being built, then
+     * "registering n/64" until the node has confirmed every script, then gone.
+     */
+    private void updateStatusBanner() {
+        if (mStatusBanner == null) return;
+        int derived = mBook.derivedCount();
+        if (derived < AddressBook.SIZE) {
+            mStatusBanner.setText("Deriving wallet addresses… " + derived + " of " + AddressBook.SIZE
+                    + " — keep the app open");
+            mStatusBanner.setVisibility(View.VISIBLE);
+        } else if (mPaired && mTrackOk < AddressBook.SIZE) {
+            mStatusBanner.setText("Registering addresses with the node… " + mTrackOk + " of " + AddressBook.SIZE);
+            mStatusBanner.setVisibility(View.VISIBLE);
+        } else {
+            mStatusBanner.setVisibility(View.GONE);
         }
     }
 
     /** All 64 base addresses are now known: track them all and re-pull coins. */
     private void onAddressBookReady() {
         if (isDestroyed()) return;
+        updateStatusBanner();
         if (mPaired && mNode != null) {
             trackScripts(0);
             loadEverything();
@@ -518,6 +546,16 @@ public class MainActivity extends AppCompatActivity {
         mPairingBanner = buildPairingBanner();
         mPairingBanner.setVisibility(View.GONE);
         rootv.addView(mPairingBanner,
+                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        mStatusBanner = new TextView(this);
+        mStatusBanner.setBackgroundColor(Design.accentSoft());
+        mStatusBanner.setTextColor(Design.accent());
+        mStatusBanner.setTypeface(Design.typefaceBold(), Typeface.BOLD);
+        mStatusBanner.setTextSize(13f);
+        mStatusBanner.setPadding(dp(16), dp(10), dp(16), dp(10));
+        mStatusBanner.setVisibility(View.GONE);
+        rootv.addView(mStatusBanner,
                 new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         rootv.addView(buildTabBar(),
@@ -657,6 +695,7 @@ public class MainActivity extends AppCompatActivity {
     private void onPaired(boolean zEnabled) {
         mPaired = zEnabled;
         if (mPairingBanner != null) mPairingBanner.setVisibility(zEnabled ? View.GONE : View.VISIBLE);
+        updateStatusBanner();
         if (!zEnabled) return;
 
         if (!mTracked) {
@@ -676,9 +715,13 @@ public class MainActivity extends AppCompatActivity {
      * all 64 are derived.
      */
     private void trackScripts(final int zIndex) {
-        if (mNode == null || zIndex >= mBook.derivedCount()) return;
+        if (mNode == null || zIndex >= mBook.derivedCount()) { updateStatusBanner(); return; }
         mNode.trackScript(mWallet.getScript(zIndex), new NodeApi.Cb() {
-            @Override public void onResult(JSONObject json) { trackScripts(zIndex + 1); }
+            @Override public void onResult(JSONObject json) {
+                mTrackOk = Math.max(mTrackOk, zIndex + 1);
+                updateStatusBanner();
+                trackScripts(zIndex + 1);
+            }
             @Override public void onError(String message)   { trackScripts(zIndex + 1); }
         });
     }

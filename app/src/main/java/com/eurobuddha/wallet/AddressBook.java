@@ -44,6 +44,14 @@ public class AddressBook {
     /** Count of consecutively-derived indices from 0 — indices [0, derivedCount) are usable. */
     private volatile int mDerived = 0;
 
+    /** Notified (on the derive thread) after each key lands; UI marshals itself. */
+    public interface DeriveListener { void onProgress(int zDerived); }
+    private volatile DeriveListener mListener;
+
+    public void setDeriveListener(DeriveListener zListener) {
+        mListener = zListener;
+    }
+
     public AddressBook(Context zContext, WalletCore zWallet) {
         mWallet = zWallet;
         mPrefs  = zContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -78,6 +86,9 @@ public class AddressBook {
         int n = 0;
         while (n < SIZE && mPubKeys[n] != null) n++;
         mDerived = n;
+
+        DeriveListener l = mListener;
+        if (l != null) l.onProgress(n);
     }
 
     /**
