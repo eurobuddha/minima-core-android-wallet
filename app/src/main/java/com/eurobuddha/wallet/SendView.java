@@ -30,7 +30,7 @@ import java.util.List;
  * <h3>Ordering (why we do NOT build before the review)</h3>
  * Building a transaction SIGNS it, which consumes a one-time WOTS leaf and advances the keyuses counter.
  * So the review dialog is computed from a dry-run (coin selection + amount/change math only) and shows
- * the signature number that WILL be used ({@code keyuses.currentUses(0)}); only on the user's explicit
+ * the signature number that WILL be used per signing key ({@code keyuses.currentUses(i)}); only on the user's explicit
  * confirm do we (1) re-check the fail-safe gate, (2) actually build+sign, (3) snapshot keyuses into the
  * vault, then (4) publish. A wrong-then-cancelled review therefore never burns a leaf.
  *
@@ -269,13 +269,13 @@ public class SendView extends BaseView {
 
             StringBuilder rev = new StringBuilder();
             rev.append("Token: ").append(tokenLabel()).append("\n");
-            rev.append("To: ").append(Util.shorten(recipient)).append("\n");
+            rev.append("To: ").append(recipient).append("\n");
             rev.append("Amount: ").append(mAmount.getText()).append("\n");
             rev.append("Inputs: ").append(sel.size()).append(" coin(s), raw ").append(inSum).append("\n");
             if (change.isMore(MiniNumber.ZERO)) rev.append("Change: ").append(change).append(" (to you)\n");
             if (isMinima()) rev.append("Burn: ").append(burn).append("\n");
 
-            confirmAndSend(rev.toString(), () ->
+            confirmAndSend(rev.toString(), sel, () ->
                     act.factory().buildSend(toInputs(sel), recipient, amountRaw, tokenIdData(), burn, newId()));
         } catch (Exception e) {
             err(e);
@@ -302,7 +302,7 @@ public class SendView extends BaseView {
                     + (isMinima() ? "Burn: " + burn + "\n" : "");
 
             final int fn = n;
-            confirmAndSend(rev, () ->
+            confirmAndSend(rev, sel, () ->
                     act.factory().buildSplit(toInputs(sel), amountRaw, fn, tokenIdData(), burn, newId()));
         } catch (Exception e) {
             err(e);
@@ -324,7 +324,7 @@ public class SendView extends BaseView {
                     + "Output: " + out + "\n"
                     + (isMinima() ? "Burn: " + burn + "\n" : "");
 
-            confirmAndSend(rev, () ->
+            confirmAndSend(rev, sel, () ->
                     act.factory().buildConsolidate(toInputs(sel), tokenIdData(), burn, newId()));
         } catch (Exception e) {
             err(e);
@@ -332,10 +332,10 @@ public class SendView extends BaseView {
     }
 
     /** Show the review dialog, and on confirm run the fail-safe gate, build+sign, snapshot, publish. */
-    private void confirmAndSend(String review, java.util.concurrent.Callable<TxnFactory.BuiltTxn> builder) {
-        int nextLeaf = act.keyUses().currentUses(0);
+    private void confirmAndSend(String review, List<JSONObject> sel,
+                                java.util.concurrent.Callable<TxnFactory.BuiltTxn> builder) {
         String full = review
-                + "\nUsing signature #" + nextLeaf + " of " + Util.WOTS_MAX_USES
+                + keyUsageLines(sel)
                 + "\n\nThis is IRREVERSIBLE. Once broadcast it cannot be undone.";
 
         new androidx.appcompat.app.AlertDialog.Builder(act)
@@ -375,12 +375,26 @@ public class SendView extends BaseView {
                 .show();
     }
 
+    /** One line per distinct signing key in the selection: the signature number that WILL be used. */
+    private String keyUsageLines(List<JSONObject> zSel) {
+        StringBuilder sb = new StringBuilder();
+        List<Integer> seen = new ArrayList<>();
+        for (JSONObject c : zSel) {
+            int ki = keyIndexOf(c);
+            if (seen.contains(ki)) continue;
+            seen.add(ki);
+            sb.append("\nKey ").append(ki).append(": using signature #")
+              .append(act.keyUses().currentUses(ki)).append(" of ").append(Util.WOTS_MAX_USES);
+        }
+        return sb.toString();
+    }
+
     private void publish(TxnFactory.BuiltTxn built) {
         Toast.makeText(act, "Broadcasting…", Toast.LENGTH_SHORT).show();
         act.node().publish(built, new NodeApi.Cb() {
             @Override public void onResult(org.json.JSONObject json) {
                 String txpowid = Util.extractTxpowid(json, built.getID());
-                Toast.makeText(act, "Sent. txpowid " + Util.shorten(txpowid), Toast.LENGTH_LONG).show();
+                Toast.makeText(act, "Sent. txpowid " + txpowid, Toast.LENGTH_LONG).show();
                 act.reload();
             }
             @Override public void onError(String message) {
@@ -424,11 +438,19 @@ public class SendView extends BaseView {
 
     private MiniNumber sumRaw(List<JSONObject> zSel) { return CoinSelector.sumRaw(zSel); }
 
-    /** Map selected bundled-JSON coins → factory InputCoins (all at our primary key index 0). */
+    /** Map selected bundled-JSON coins → factory InputCoins, each at its OWN wallet key index. */
     private List<TxnFactory.InputCoin> toInputs(List<JSONObject> zSel) {
         List<TxnFactory.InputCoin> in = new ArrayList<>();
-        for (JSONObject c : zSel) in.add(TxnFactory.fromCoinJson(c, 0));
+        for (JSONObject c : zSel) in.add(TxnFactory.fromCoinJson(c, keyIndexOf(c)));
         return in;
+    }
+
+    /** The wallet key index owning this coin's address (coins come pre-filtered to ours). */
+    private int keyIndexOf(JSONObject zCoin) {
+        String addr = String.valueOf(zCoin.get("address"));
+        Integer ki = act.keyIndexForAddress(addr);
+        if (ki == null) throw new IllegalStateException("Coin address is not in our wallet: " + addr);
+        return ki;
     }
 
     /** The Token descriptor for the selected custom token (null for native Minima). */
@@ -436,7 +458,7 @@ public class SendView extends BaseView {
         if (isMinima()) return null;
         List<JSONObject> pool = coinsOfToken();
         if (pool.isEmpty()) throw new IllegalStateException("No coins of this token");
-        return TxnFactory.fromCoinJson(pool.get(0), 0).getToken();
+        return TxnFactory.fromCoinJson(pool.get(0), keyIndexOf(pool.get(0))).getToken();
     }
 
     /** Convert a human display amount to RAW units (native == display; token scaled down). */

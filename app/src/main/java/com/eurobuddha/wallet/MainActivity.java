@@ -59,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
     private TxnFactory mFactory;
     private String mAddr0x;
     private String mAddrMx;
+    private AddressBook mBook;
 
     // --- transport ---
     private NodeLink mNode;
@@ -477,6 +478,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void startMain() {
         mWallet  = new WalletCore(mVault.phrase(), mKeyUses);
+        mBook    = new AddressBook(this, mWallet);   // loads the cached 64-address set if present
         mFactory = new TxnFactory(mWallet);
         mAddr0x  = mWallet.getReceiveAddress().getAddressData().to0xString();
         mAddrMx  = mWallet.getReceiveAddress().getMinimaAddress();
@@ -484,6 +486,25 @@ public class MainActivity extends AppCompatActivity {
         buildUi();
 
         mNode = new NodeLink(this, this::onPaired);
+
+        // Derive any missing base addresses (all 64 on first run — expensive) off the UI thread,
+        // then re-track + reload so coins at ALL our addresses show up.
+        if (!mBook.isComplete()) {
+            new Thread(() -> {
+                mBook.deriveMissing();
+                runOnUiThread(this::onAddressBookReady);
+            }, "addressbook-derive").start();
+        }
+    }
+
+    /** All 64 base addresses are now known: track them all and re-pull coins. */
+    private void onAddressBookReady() {
+        if (isDestroyed()) return;
+        if (mPaired && mNode != null) {
+            trackScripts(0);
+            loadEverything();
+        }
+        refreshCurrent();
     }
 
     private void buildUi() {
@@ -640,16 +661,26 @@ public class MainActivity extends AppCompatActivity {
 
         if (!mTracked) {
             mTracked = true;
-            // TRACK our full RETURN SIGNEDBY(...) script so a regular node indexes our coins as
-            // relevant (idempotent; forward-only). Balances then read `coins relevant:true`.
-            mNode.trackScript(mWallet.getScript(0), new NodeApi.Cb() {
-                @Override public void onResult(JSONObject json) { loadEverything(); }
-                @Override public void onError(String message)   { loadEverything(); }
-            });
-        } else {
-            loadEverything();
+            // TRACK every derived RETURN SIGNEDBY(...) script so a regular node indexes coins at
+            // ALL our base addresses as relevant (idempotent; forward-only). Tracking only affects
+            // FUTURE blocks, so balances load immediately in parallel rather than waiting.
+            trackScripts(0);
         }
+        loadEverything();
         loadBlock();
+    }
+
+    /**
+     * Chain {@code newscript trackall:true} over every so-far-derived base script, one IPC call at
+     * a time (idempotent; errors skip to the next). {@link #onAddressBookReady} re-runs this once
+     * all 64 are derived.
+     */
+    private void trackScripts(final int zIndex) {
+        if (mNode == null || zIndex >= mBook.derivedCount()) return;
+        mNode.trackScript(mWallet.getScript(zIndex), new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) { trackScripts(zIndex + 1); }
+            @Override public void onError(String message)   { trackScripts(zIndex + 1); }
+        });
     }
 
     private void loadEverything() {
@@ -660,7 +691,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadCoins() {
-        mNode.coins(mAddr0x, new NodeApi.Cb() {
+        // One whole-list call (hand-off safe) covering ALL 64 base addresses; rebuildBalances
+        // filters out coins that are not ours (the node's own wallet is also "relevant").
+        mNode.coinsRelevant(new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 rebuildBalances(json);
                 refreshCurrent();
@@ -710,6 +743,8 @@ public class MainActivity extends AppCompatActivity {
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject c = arr.optJSONObject(i);
                 if (c == null) continue;
+                // OURS only: the relevant set also holds the paired node's own wallet coins.
+                if (mBook.keyIndexFor(c.optString("address", "")) == null) continue;
                 try {
                     mcoins.add(parser.parse(c.toString()));
                 } catch (Exception ignore) { }
@@ -737,6 +772,7 @@ public class MainActivity extends AppCompatActivity {
     private void refreshCurrent() {
         switch (mTab) {
             case TAB_SEND:     if (mSendView != null) mSendView.refresh(); break;
+            case TAB_RECEIVE:  if (mReceiveView != null) mReceiveView.refresh(); break;
             case TAB_SETTINGS: if (mSettingsView != null) mSettingsView.refresh(); break;
             default:           if (mBalancesView != null) mBalancesView.refresh();
         }
@@ -757,6 +793,10 @@ public class MainActivity extends AppCompatActivity {
     public org.minima.utils.json.JSONArray coins() { return mLastCoins; }
     public String defaultAddress() { return mAddrMx; }
     public String address0x()      { return mAddr0x; }
+    public AddressBook addressBook() { return mBook; }
+
+    /** The wallet key index owning this coin's 0x address, or null if the coin is not ours. */
+    public Integer keyIndexForAddress(String zAddr0x) { return mBook.keyIndexFor(zAddr0x); }
     public String blockLabel()     { return mBlock.isEmpty() ? "—" : "#" + mBlock; }
     public String circulatingSupply() { return ""; }
 

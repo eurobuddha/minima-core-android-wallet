@@ -64,8 +64,8 @@ public class NodeLink {
     /**
      * TRACK our full script so a REGULAR node indexes coins arriving at our address as "relevant"
      * (exactly like the node's own coins). Runs {@code newscript trackall:true script:"<script>"},
-     * where {@code zScript} is our complete {@code RETURN SIGNEDBY(0x<pubkey>)} script (pass
-     * {@code WalletCore.getScript(0)}). Forward-only (indexes coins in FUTURE blocks; does NOT back-fill
+     * where {@code zScript} is one complete {@code RETURN SIGNEDBY(0x<pubkey>)} script (pass
+     * {@code WalletCore.getScript(i)} for each of the 64 base keys). Forward-only (indexes coins in FUTURE blocks; does NOT back-fill
      * coins already on-chain) and idempotent — safe to call on every startup/pair. Non-admin.
      */
     public void trackScript(String zScript, NodeApi.Cb zCb) {
@@ -84,6 +84,16 @@ public class NodeLink {
      */
     public void coins(final String zAddress, final NodeApi.Cb zCb) {
         coins(zAddress, null, zCb);
+    }
+
+    /**
+     * ALL relevant unspent coins in one call: {@code coins relevant:true} with NO address filter —
+     * covers every one of our 64 tracked base addresses at once. The caller MUST filter the result
+     * to our own address set (a paired node's relevant set also contains the node's OWN wallet
+     * coins). Large replies arrive via the node's content:// hand-off (since minimaCore 1.6.9).
+     */
+    public void coinsRelevant(final NodeApi.Cb zCb) {
+        mApi.cmd("coins relevant:true", zCb);
     }
 
     /**

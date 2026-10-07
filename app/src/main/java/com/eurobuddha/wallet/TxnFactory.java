@@ -524,6 +524,8 @@ public class TxnFactory {
         }
 
         //Change output — back to our own change address (does not keep state; storeState=false).
+        //ponytail: change always goes to base address 0 (tracked + spendable); rotate across the 64
+        //like the node's random getaddress if change-address privacy ever matters.
         if (change.isMore(MiniNumber.ZERO)) {
             MiniData chgaddr = mWallet.getReceiveAddress().getAddressData();
             Coin changecoin = new Coin(Coin.COINID_OUTPUT, chgaddr, change, Token.TOKENID_MINIMA, false);

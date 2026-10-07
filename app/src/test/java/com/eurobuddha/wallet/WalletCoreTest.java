@@ -129,4 +129,44 @@ public class WalletCoreTest {
             sigB.getAllSignatureProofs().get(sigB.getAllSignatureProofs().size() - 1).getSignature().to0xString());
         System.out.println("keyuses     : OK (leaf 0 then leaf 1; counter now " + uses.currentUses(0) + ")");
     }
+
+    /**
+     * The 64-base-address set: distinct indices derive distinct addresses, a preloaded pubkey
+     * reproduces the exact same script+address as a full derivation, and signing at a non-zero
+     * index verifies against that index's fresh TreeKey.
+     */
+    @Test
+    public void baseAddressSetAndPreload() {
+        WalletCore wallet = new WalletCore(PHRASE, new InMemoryKeyUses());
+
+        assertEquals("64 base keys, matching minima-core", 64, WalletCore.NUM_BASE_KEYS);
+
+        // Spot-check three indices across the range (full 64 is just slow, same code path).
+        int[] indices = {0, 1, 63};
+        java.util.Set<String> addrs = new java.util.HashSet<>();
+        for (int i : indices) {
+            addrs.add(wallet.getAddress(i).getAddressData().to0xString());
+        }
+        assertEquals("distinct indices derive distinct addresses", indices.length, addrs.size());
+
+        // Preload path: a fresh WalletCore given only the cached pubkey must produce the identical
+        // script and both address forms, with no TreeKey build.
+        MiniData pubkey1 = wallet.getPublicKey(1);
+        WalletCore preloaded = new WalletCore(PHRASE, new InMemoryKeyUses());
+        preloaded.preloadPublicKey(1, pubkey1);
+        assertEquals("preloaded script identical", wallet.getScript(1), preloaded.getScript(1));
+        assertEquals("preloaded 0x identical",
+            wallet.getAddress(1).getAddressData().to0xString(),
+            preloaded.getAddress(1).getAddressData().to0xString());
+        assertEquals("preloaded Mx identical",
+            wallet.getAddress(1).getMinimaAddress(),
+            preloaded.getAddress(1).getMinimaAddress());
+
+        // Sign at index 1 (through the preloaded instance — signing derives from the SEED, never
+        // the cache) and verify against a fresh index-1 TreeKey.
+        MiniData txid = new MiniData("0x0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20");
+        Signature sig = preloaded.signTransactionID(txid, 1);
+        assertTrue("index-1 sig root pubkey", sig.getRootPublicKey().isEqual(pubkey1));
+        assertTrue("index-1 WOTS verify", wallet.deriveTreeKey(1).verify(txid, sig));
+    }
 }

@@ -35,8 +35,22 @@ import org.minima.utils.Crypto;
  */
 public class WalletCore {
 
+    /**
+     * The number of BASE wallet keys/addresses, matching minima-core's
+     * {@code Wallet.NUMBER_GETADDRESS_KEYS}: a node (or this wallet) initialised from the same seed
+     * derives exactly these 64 default addresses (modifiers 0..63).
+     */
+    public static final int NUM_BASE_KEYS = 64;
+
     /** The wallet base seed = BIP39.convertStringToSeed(phrase). Held in memory for M0. */
     private final MiniData mBaseSeed;
+
+    /**
+     * Public keys by key index. Deriving a public key builds a full {@link TreeKey} (64 WOTS
+     * keygens, expensive) — once known, a pubkey is pure public data, so it is cached here and can
+     * be preloaded from a persisted cache (see {@code AddressBook}).
+     */
+    private final java.util.Map<Integer, MiniData> mPubKeys = new java.util.HashMap<>();
 
     /** The durable one-time-use counter guarding every signature. */
     private final KeyUses mKeyUses;
@@ -82,9 +96,30 @@ public class WalletCore {
         return TreeKey.createDefault(derivePrivateSeed(zKeyIndex));
     }
 
-    /** The WOTS public key (MiniData / 0x-hex) for a key index. */
+    /** The WOTS public key (MiniData / 0x-hex) for a key index. Cached after first derivation. */
     public MiniData getPublicKey(int zKeyIndex) {
-        return deriveTreeKey(zKeyIndex).getPublicKey();
+        synchronized (mPubKeys) {
+            MiniData cached = mPubKeys.get(zKeyIndex);
+            if (cached != null) return cached;
+        }
+        //Expensive TreeKey build — outside the lock so parallel derivations don't serialize.
+        MiniData pubkey = deriveTreeKey(zKeyIndex).getPublicKey();
+        synchronized (mPubKeys) {
+            mPubKeys.put(zKeyIndex, pubkey);
+        }
+        return pubkey;
+    }
+
+    /**
+     * Preload a known public key for an index, skipping the expensive TreeKey build. The caller is
+     * responsible for the value being the TRUE pubkey of this seed+index (a wrong preload cannot
+     * leak funds via signing — {@link #signTransactionID} derives from the seed — but it would
+     * display a receive address this wallet cannot spend; see AddressBook's spot-check).
+     */
+    public void preloadPublicKey(int zKeyIndex, MiniData zPubKey) {
+        synchronized (mPubKeys) {
+            mPubKeys.put(zKeyIndex, zPubKey);
+        }
     }
 
     /** The default script for a key index: {@code RETURN SIGNEDBY(0x<pubkey>)}. */
