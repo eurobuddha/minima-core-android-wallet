@@ -25,6 +25,7 @@ public final class ImageLoader {
             };
 
     private static final int THUMB_PX = 320;     // list rows + the 128dp detail icon
+    private static final int TILE_PX  = 640;     // gallery grid cells (half-screen squares)
     private static final int FULL_PX  = 1600;     // NFT full-resolution view (bounded so it can't OOM)
     private static final int MAX_BYTES = 8 * 1024 * 1024;   // hard cap so a hostile icon url can't OOM us
 
@@ -48,13 +49,28 @@ public final class ImageLoader {
      *  success. Matches the dapp: identicon base, real graphic wins when it loads. onLoaded fires once on a
      *  fresh successful decode (so the caller can re-render, like the dapp's renderBalances-after-resolve). */
     public static void loadOver(final MainActivity act, final String url, final ImageView iv, final Runnable onLoaded) {
+        loadOverPx(act, url, iv, THUMB_PX, onLoaded);
+    }
+
+    /** As {@link #loadOver} at gallery-tile resolution (~640px) — half-screen grid squares. */
+    public static void loadTile(final MainActivity act, final String url, final ImageView iv, final Runnable onLoaded) {
+        loadOverPx(act, url, iv, TILE_PX, onLoaded);
+    }
+
+    /** As {@link #loadOver} at full resolution (bounded 1600px) — the zoomable item viewer. */
+    public static void loadFullOver(final MainActivity act, final String url, final ImageView iv, final Runnable onLoaded) {
+        loadOverPx(act, url, iv, FULL_PX, onLoaded);
+    }
+
+    private static void loadOverPx(final MainActivity act, final String url, final ImageView iv,
+                                   final int reqPx, final Runnable onLoaded) {
         iv.setTag(url);
         if (url == null || url.isEmpty()) return;      // keep the identicon
-        String key = THUMB_PX + "|" + url;
+        String key = reqPx + "|" + url;
         Bitmap cached = CACHE.get(key);
         if (cached != null) { iv.setImageBitmap(cached); return; }
         EXEC.execute(() -> {
-            final Bitmap b = decode(url, THUMB_PX);
+            final Bitmap b = decode(url, reqPx);
             if (b == null) return;                      // keep the identicon on failure
             CACHE.put(key, b);
             act.runOnUiThread(() -> {
