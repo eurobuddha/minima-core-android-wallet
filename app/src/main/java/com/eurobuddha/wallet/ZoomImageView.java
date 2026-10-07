@@ -36,6 +36,13 @@ public class ZoomImageView extends AppCompatImageView {
         mSwipeListener = zListener;
     }
 
+    /** Fired on a confirmed single tap (never part of a double-tap) — chrome show/hide. */
+    private Runnable mTapListener;
+
+    public void setTapListener(Runnable zListener) {
+        mTapListener = zListener;
+    }
+
     public ZoomImageView(Context zContext) {
         super(zContext);
         setScaleType(ScaleType.MATRIX);
@@ -61,6 +68,10 @@ public class ZoomImageView extends AppCompatImageView {
                 if (Math.abs(dx) < 60 * density || Math.abs(vx) < Math.abs(vy)) return false;
                 mSwipeListener.onSwipe(dx < 0);   // finger left → next item
                 return true;
+            }
+            @Override public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (mTapListener != null) { mTapListener.run(); return true; }
+                return false;
             }
             @Override public boolean onDoubleTap(MotionEvent e) {
                 if (mScale > 1.01f) {

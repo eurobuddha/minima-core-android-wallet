@@ -77,6 +77,23 @@ final class Nft {
         return LOCKED_SCRIPT.matcher(zScript).matches() || LEGACY_SCRIPT.matcher(zScript).matches();
     }
 
+    /**
+     * True only for the LOCKED-edition script. An UNSTAMPED locked item (state 0 absent or "0")
+     * keeps the creator bypass live — {@code PREVSTATE(0) EQ 0 AND SIGNEDBY(creator)} — so after a
+     * transfer the creator could still reclaim the recipient's coin. Sends of such coins are
+     * refused (same rule as the NFT wallet).
+     */
+    static boolean isLockedScript(String zScript) {
+        return zScript != null && LOCKED_SCRIPT.matcher(zScript).matches();
+    }
+
+    /** True when this coin must NOT be sent: locked-edition script with no stamp sealed yet. */
+    static boolean isUnstampedLocked(Meta zMeta, JSONObject zCoin) {
+        if (zMeta == null || !isLockedScript(zMeta.script)) return false;
+        String s0 = state(zCoin, 0);
+        return s0 == null || "0".equals(s0);
+    }
+
     /** NFT candidate = non-Minima token with 0 (or absent) decimals — the nftstudio rule. */
     static boolean isNftMeta(Meta m) {
         return m.decimals.isEmpty() || "0".equals(m.decimals);

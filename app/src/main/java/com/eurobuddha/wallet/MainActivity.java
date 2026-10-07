@@ -871,6 +871,13 @@ public class MainActivity extends AppCompatActivity {
      */
     public void confirmSignAndPublish(String zReview, int zKeyIndex,
                                       java.util.concurrent.Callable<TxnFactory.BuiltTxn> zBuilder) {
+        confirmSignAndPublish(zReview, zKeyIndex, zBuilder, null);
+    }
+
+    /** As above; {@code zOnSent} runs once after a successful broadcast (before the data reload). */
+    public void confirmSignAndPublish(String zReview, int zKeyIndex,
+                                      java.util.concurrent.Callable<TxnFactory.BuiltTxn> zBuilder,
+                                      Runnable zOnSent) {
         String full = zReview
                 + "\nKey " + zKeyIndex + ": using signature #" + mKeyUses.currentUses(zKeyIndex)
                 + " of " + Util.WOTS_MAX_USES
@@ -896,6 +903,7 @@ public class MainActivity extends AppCompatActivity {
                             @Override public void onResult(org.json.JSONObject json) {
                                 String txpowid = Util.extractTxpowid(json, built.getID());
                                 Toast.makeText(MainActivity.this, "Sent. txpowid " + txpowid, Toast.LENGTH_LONG).show();
+                                if (zOnSent != null) zOnSent.run();
                                 reload();
                             }
                             @Override public void onError(String message) {
