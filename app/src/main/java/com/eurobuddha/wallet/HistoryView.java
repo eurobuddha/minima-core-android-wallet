@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -35,6 +36,7 @@ public class HistoryView extends BaseView {
     private final LinearLayout list;
     private final Button older;
     private final TextView status;
+    private final LinearLayout chips;
 
     private final ArrayList<HistoryTx> mRows = new ArrayList<>();
     private int mOffset = 0;
@@ -42,13 +44,18 @@ public class HistoryView extends BaseView {
     private boolean mLoading = false;
     private boolean mEnd = false;
 
+    /** Active direction filter: null = all, else "SENT" / "RECEIVED" / "SELF". */
+    private String mFilter = null;
+
     public HistoryView(MainActivity a) {
         super(a, buildRoot(a));
         LinearLayout content = (LinearLayout) ((ScrollView) root).getChildAt(0);
         status = (TextView) content.getChildAt(0);
-        list   = (LinearLayout) content.getChildAt(1);
-        older  = (Button) content.getChildAt(2);
+        chips  = (LinearLayout) content.getChildAt(1);
+        list   = (LinearLayout) content.getChildAt(2);
+        older  = (Button) content.getChildAt(3);
         older.setOnClickListener(v -> loadPage());
+        buildChips();
         refresh();
     }
 
@@ -65,6 +72,11 @@ public class HistoryView extends BaseView {
         status.setTextSize(12f);
         content.addView(status);
 
+        LinearLayout chips = new LinearLayout(a);
+        chips.setOrientation(LinearLayout.HORIZONTAL);
+        chips.setPadding(0, dp(a, 8), 0, dp(a, 2));
+        content.addView(chips);
+
         LinearLayout list = new LinearLayout(a);
         list.setOrientation(LinearLayout.VERTICAL);
         content.addView(list);
@@ -77,6 +89,37 @@ public class HistoryView extends BaseView {
 
         sv.addView(content);
         return sv;
+    }
+
+    /** Filter chips + export, one row: ALL · SENT · RECEIVED · SELF · (spacer) · EXPORT. */
+    private void buildChips() {
+        chips.removeAllViews();
+        String[][] defs = { {null, "ALL"}, {"SENT", "SENT"}, {"RECEIVED", "RECEIVED"}, {"SELF", "SELF"} };
+        for (String[] def : defs) {
+            final String value = def[0];
+            TextView chip = new TextView(act);
+            chip.setText(def[1]);
+            chip.setTextSize(11f);
+            chip.setLetterSpacing(0.06f);
+            chip.setTypeface(Design.typefaceBold(), Typeface.BOLD);
+            boolean sel = (mFilter == null && value == null) || (value != null && value.equals(mFilter));
+            chip.setTextColor(sel ? Design.accent() : Design.dim());
+            chip.setBackgroundColor(sel ? Design.surface() : Design.bg());
+            chip.setPadding(dp(10), dp(6), dp(10), dp(6));
+            chip.setOnClickListener(v -> { mFilter = value; buildChips(); render(); });
+            chips.addView(chip);
+        }
+        View spacer = new View(act);
+        chips.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        TextView export = new TextView(act);
+        export.setText("EXPORT");
+        export.setTextSize(11f);
+        export.setLetterSpacing(0.06f);
+        export.setTypeface(Design.typefaceBold(), Typeface.BOLD);
+        export.setTextColor(Design.accent());
+        export.setPadding(dp(10), dp(6), dp(2), dp(6));
+        export.setOnClickListener(v -> promptExport());
+        chips.addView(export);
     }
 
     private static int dp(MainActivity a, int v) {
@@ -149,19 +192,103 @@ public class HistoryView extends BaseView {
         });
     }
 
+    private List<HistoryTx> filtered() {
+        if (mFilter == null) return mRows;
+        List<HistoryTx> out = new ArrayList<>();
+        for (HistoryTx tx : mRows) if (mFilter.equals(tx.direction())) out.add(tx);
+        return out;
+    }
+
     private void render() {
         list.removeAllViews();
+        List<HistoryTx> shown = filtered();
         if (mRows.isEmpty()) {
             status.setText(act.isPaired()
                     ? (mLoading ? "Loading…" : "No transactions at this wallet's addresses yet")
                     : "Pair with Minima Core to load history");
+        } else if (shown.isEmpty()) {
+            status.setText("No " + mFilter.toLowerCase(Locale.UK) + " transactions in the loaded range"
+                    + (mEnd ? "" : " — try Load older"));
         } else {
-            status.setText(mRows.size() + " transaction(s) at this wallet's addresses");
+            status.setText(shown.size() + (mFilter == null ? " transaction(s)" :
+                    " " + mFilter.toLowerCase(Locale.UK) + " transaction(s)") + " at this wallet's addresses");
         }
-        for (HistoryTx tx : mRows) {
+        for (HistoryTx tx : shown) {
             list.addView(row(tx));
         }
         older.setVisibility(mEnd || mRows.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    // ---- export ---------------------------------------------------------------------------------
+
+    private void promptExport() {
+        List<HistoryTx> shown = filtered();
+        if (shown.isEmpty()) {
+            android.widget.Toast.makeText(act, "Nothing to export", android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Export " + shown.size() + " transaction(s)")
+                .setPositiveButton("CSV", (d, w) -> share("minima-wallet-history.csv", exportCsv(shown)))
+                .setNeutralButton("JSON", (d, w) -> share("minima-wallet-history.json", exportJson(shown)))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private static String csvSafe(String v) {
+        if (v == null) return "";
+        if (v.contains(",") || v.contains("\"") || v.contains("\n")) {
+            return "\"" + v.replace("\"", "\"\"") + "\"";
+        }
+        return v;
+    }
+
+    /** Full identifiers in every row — the export exists to be pasted into explorers and sheets. */
+    private String exportCsv(List<HistoryTx> zRows) {
+        StringBuilder sb = new StringBuilder("time,direction,amount,token,tokenid,counterparty,block,txpowid\n");
+        for (HistoryTx tx : zRows) {
+            String tid = tx.primaryTokenId();
+            sb.append(csvSafe(FMT.format(new Date(tx.timemilli)))).append(',')
+              .append(tx.direction()).append(',')
+              .append(tid == null ? "" : tx.diff.get(tid).toPlainString()).append(',')
+              .append(csvSafe(tid == null ? "" : tx.tokenName(tid))).append(',')
+              .append(tid == null ? "" : tid).append(',')
+              .append(tx.counterparty).append(',')
+              .append(tx.block).append(',')
+              .append(tx.txpowid).append('\n');
+        }
+        return sb.toString();
+    }
+
+    private String exportJson(List<HistoryTx> zRows) {
+        org.json.JSONArray arr = new org.json.JSONArray();
+        try {
+            for (HistoryTx tx : zRows) {
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("time", FMT.format(new Date(tx.timemilli)));
+                o.put("direction", tx.direction());
+                org.json.JSONObject amounts = new org.json.JSONObject();
+                for (Map.Entry<String, BigDecimal> e : tx.diff.entrySet()) {
+                    amounts.put(e.getKey(), e.getValue().toPlainString());
+                }
+                o.put("amounts", amounts);
+                o.put("counterparty", tx.counterparty);
+                o.put("block", tx.block);
+                o.put("txpowid", tx.txpowid);
+                arr.put(o);
+            }
+            return arr.toString(2);
+        } catch (org.json.JSONException e) {
+            return arr.toString();
+        }
+    }
+
+    private void share(String zName, String zBody) {
+        android.content.Intent send = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(android.content.Intent.EXTRA_SUBJECT, zName);
+        send.putExtra(android.content.Intent.EXTRA_TEXT, zBody);
+        act.startActivity(android.content.Intent.createChooser(send, "Export history"));
     }
 
     private View row(final HistoryTx tx) {
@@ -188,9 +315,10 @@ public class HistoryView extends BaseView {
         dirView.setTextColor("RECEIVED".equals(dir) ? Design.accent() : Design.dim());
         top.addView(dirView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         TextView amtView = new TextView(act);
+        String sign = amt.compareTo(BigDecimal.ZERO) > 0 ? "+" : (amt.compareTo(BigDecimal.ZERO) < 0 ? "−" : "");
         amtView.setText(tid == null ? "—"
-                : Util.tidyAmount(amt.toPlainString()) + "  " + tx.tokenName(tid));
-        amtView.setTextColor(Design.text());
+                : sign + Util.tidyAmount(amt.abs().toPlainString()) + "  " + tx.tokenName(tid));
+        amtView.setTextColor("RECEIVED".equals(dir) ? Design.accent() : Design.text());
         amtView.setTypeface(Design.typefaceBold(), Typeface.BOLD);
         amtView.setTextSize(14f);
         amtView.setGravity(Gravity.END);

@@ -144,6 +144,47 @@ public class MainActivity extends AppCompatActivity {
                 mSession.onHandledForeground(true);
             }
         }
+        mForeground = true;
+        mTickHandler.removeCallbacks(mBlockTick);
+        mTickHandler.postDelayed(mBlockTick, BLOCK_TICK_MS);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        mForeground = false;
+        mTickHandler.removeCallbacks(mBlockTick);
+    }
+
+    // =============================================================================================
+    // Foreground block tick — the node has no push channel, so poll the tip while visible and
+    // drive the live surfaces (header, balances, History) when the block actually changes.
+    // =============================================================================================
+
+    private static final long BLOCK_TICK_MS = 30_000;
+    private final android.os.Handler mTickHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean mForeground = false;
+    private final Runnable mBlockTick = new Runnable() {
+        @Override public void run() {
+            if (isDestroyed() || !mForeground) return;
+            if (mPaired && mNode != null) loadBlock();
+            mTickHandler.postDelayed(this, BLOCK_TICK_MS);
+        }
+    };
+
+    /** A genuinely new chain tip: refresh data and tell the visible tab. */
+    private void onBlockChanged() {
+        if (mPaired && mNode != null) loadEverything();
+        BaseView view;
+        switch (mTab) {
+            case TAB_SEND:     view = mSendView; break;
+            case TAB_RECEIVE:  view = mReceiveView; break;
+            case TAB_HISTORY:  view = mHistoryView; break;
+            case TAB_NFTS:     view = mNftView; break;
+            case TAB_SETTINGS: view = mSettingsView; break;
+            default:           view = mBalancesView;
+        }
+        if (view != null) view.onNewBlock();
     }
 
     @Override
@@ -767,7 +808,12 @@ public class MainActivity extends AppCompatActivity {
                 JSONObject r = json.optJSONObject("response");
                 if (r != null) {
                     String b = r.optString("block", r.optString("blocknumber", ""));
-                    if (!b.isEmpty()) { mBlock = b; if (mBlockView != null) mBlockView.setText("#" + b); }
+                    if (!b.isEmpty()) {
+                        boolean changed = !b.equals(mBlock) && !mBlock.isEmpty();
+                        mBlock = b;
+                        if (mBlockView != null) mBlockView.setText("#" + b);
+                        if (changed) onBlockChanged();
+                    }
                 }
             }
             @Override public void onError(String message) { }
