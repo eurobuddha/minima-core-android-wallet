@@ -183,7 +183,10 @@ public class NftView extends BaseView {
                     : "Pair with Minima Core to load your NFTs");
             return;
         }
-        status.setText(list.size() + " collection(s) · tap artwork to browse");
+        int confirming = 0;
+        for (Group g : list) for (JSONObject c : g.coins) if (isPending(Nft.str(c, "coinid"))) confirming++;
+        status.setText(list.size() + " collection(s) · tap artwork to browse"
+                + (confirming > 0 ? " · " + confirming + " item(s) confirming on-chain" : ""));
 
         List<View> cells = new ArrayList<>();
         for (Group g : list) cells.add(galleryTile(g));
@@ -345,7 +348,7 @@ public class NftView extends BaseView {
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
         if (pending) {
             TextView chip = new TextView(act);
-            chip.setText("SENDING");
+            chip.setText("CONFIRMING");
             chip.setTextSize(10f);
             chip.setLetterSpacing(0.08f);
             chip.setTypeface(Design.typefaceBold(), Typeface.BOLD);
@@ -368,7 +371,7 @@ public class NftView extends BaseView {
         label.setPadding(dp(2), dp(4), dp(2), 0);
         caption.addView(label, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         TextView sendOne = new TextView(act);
-        sendOne.setText(pending ? "SENDING…" : "SEND");
+        sendOne.setText(pending ? "CONFIRMING…" : "SEND");
         sendOne.setTextSize(12f);
         sendOne.setLetterSpacing(0.06f);
         sendOne.setTypeface(Design.typefaceBold(), Typeface.BOLD);
@@ -455,7 +458,7 @@ public class NftView extends BaseView {
             boolean pending = isPending(Nft.str(coin, "coinid"));
             title.setText(g.meta.name + (idx >= 0 ? "  #" + idx : ""));
             counter.setText((pos[0] + 1) + " / " + g.coins.size());
-            send.setText(pending ? "Sending…" : "Send");
+            send.setText(pending ? "Confirming…" : "Send");
             send.setEnabled(!pending);
             send.setAlpha(pending ? 0.5f : 1f);
             zoom.setImageBitmap(Identicon.forToken(g.tokenid + idx, dp(320)));
@@ -565,7 +568,7 @@ public class NftView extends BaseView {
     private String sendGuard(Group g, JSONObject coin) {
         String coinid = Nft.str(coin, "coinid");
         if (isPending(coinid)) {
-            return "This item is already being sent — waiting for the chain to confirm";
+            return "This item is confirming on-chain — wait for it to leave the gallery (or 10 min)";
         }
         if (Nft.isUnstampedLocked(g.meta, coin)) {
             return "Unstamped locked edition — the creator could reclaim it from the recipient. "
@@ -745,16 +748,21 @@ public class NftView extends BaseView {
                 .setNegativeButton("Stop after current", (d, w) -> cancelled[0] = true)
                 .create();
         pd.show();
+        //A Dozing phone drops its peers and mined transactions evaporate before block
+        //inclusion (proven live: 17 of 19 vanished). Hold the screen through the batch.
+        if (pd.getWindow() != null) {
+            pd.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
 
-        sendNext(g, coins, recipient, 0, new ArrayList<>(), progress, pd, cancelled);
+        sendNext(g, coins, recipient, 0, new ArrayList<>(), new ArrayList<>(), progress, pd, cancelled);
     }
 
     private void sendNext(final Group g, final List<JSONObject> coins,
                           final String recipient, final int i, final List<String> txpowids,
-                          final TextView progress, final androidx.appcompat.app.AlertDialog pd,
-                          final boolean[] cancelled) {
+                          final List<String> sentCoinIds, final TextView progress,
+                          final androidx.appcompat.app.AlertDialog pd, final boolean[] cancelled) {
         if (i >= coins.size() || cancelled[0]) {
-            finishCollectionSend(coins.size(), i, txpowids, null, pd);
+            finishCollectionSend(g, recipient, coins.size(), i, txpowids, sentCoinIds, null, pd);
             return;
         }
         final JSONObject coin = coins.get(i);
@@ -780,51 +788,192 @@ public class NftView extends BaseView {
                         }
                     }
                 } catch (Exception e) {
-                    finishCollectionSend(coins.size(), i, txpowids,
+                    finishCollectionSend(g, recipient, coins.size(), i, txpowids, sentCoinIds,
                             "item " + (idx >= 0 ? "#" + idx : i + 1) + ": " + e.getMessage(), pd);
                     return;
                 }
-                publishOne(g, coins, recipient, i, txpowids, progress, pd, cancelled, coinid, idx, built);
+                publishOne(g, coins, recipient, i, txpowids, sentCoinIds, progress, pd, cancelled, coinid, idx, built);
             }
             @Override public void onError(String message) {
-                finishCollectionSend(coins.size(), i, txpowids,
+                finishCollectionSend(g, recipient, coins.size(), i, txpowids, sentCoinIds,
                         "item " + (idx >= 0 ? "#" + idx : i + 1) + " could not be prepared: " + message, pd);
             }
         });
     }
 
     private void publishOne(final Group g, final List<JSONObject> coins, final String recipient,
-                            final int i, final List<String> txpowids, final TextView progress,
-                            final androidx.appcompat.app.AlertDialog pd, final boolean[] cancelled,
-                            final String coinid, final int idx, final TxnFactory.BuiltTxn built) {
+                            final int i, final List<String> txpowids, final List<String> sentCoinIds,
+                            final TextView progress, final androidx.appcompat.app.AlertDialog pd,
+                            final boolean[] cancelled, final String coinid, final int idx,
+                            final TxnFactory.BuiltTxn built) {
         act.node().publish(built, new NodeApi.Cb() {
             @Override public void onResult(org.json.JSONObject json) {
                 PENDING.put(coinid, System.currentTimeMillis());
                 txpowids.add(Util.extractTxpowid(json, built.getID()));
-                sendNext(g, coins, recipient, i + 1, txpowids, progress, pd, cancelled);
+                sentCoinIds.add(coinid);
+                sendNext(g, coins, recipient, i + 1, txpowids, sentCoinIds, progress, pd, cancelled);
             }
             @Override public void onError(String message) {
-                finishCollectionSend(coins.size(), i, txpowids,
+                finishCollectionSend(g, recipient, coins.size(), i, txpowids, sentCoinIds,
                         "item " + (idx >= 0 ? "#" + idx : i + 1) + " broadcast failed: " + message
                         + " (its signature is consumed — that leaf is safely skipped)", pd);
             }
         });
     }
 
-    private void finishCollectionSend(int total, int attempted, List<String> txpowids,
+    /** Broadcasting is over (complete, stopped, or failed). Anything broadcast now gets TRACKED
+     *  to on-chain confirmation instead of being declared done at "sent". */
+    private void finishCollectionSend(Group g, String recipient, int total, int attempted,
+                                      List<String> txpowids, List<String> sentCoinIds,
                                       String error, androidx.appcompat.app.AlertDialog pd) {
         pd.dismiss();
-        StringBuilder sb = new StringBuilder();
-        sb.append("Sent ").append(txpowids.size()).append(" of ").append(total).append(" item(s)\n");
-        if (error != null) sb.append("\nStopped: ").append(error)
+        if (mViewer != null) mViewer.dismiss();
+        if (mBrowser != null) mBrowser.dismiss();
+        refresh();
+        act.reload();
+
+        StringBuilder header = new StringBuilder();
+        header.append("Broadcast ").append(sentCoinIds.size()).append(" of ").append(total).append(" item(s)\n");
+        if (error != null) header.append("Stopped: ").append(error)
                 .append("\nRemaining items were NOT signed and stay in this wallet.\n");
-        else if (attempted < total) sb.append("\nStopped by you — remaining items stay in this wallet.\n");
-        if (!txpowids.isEmpty()) {
-            sb.append("\ntxpowids:\n");
-            for (String id : txpowids) sb.append(id).append("\n");
+        else if (attempted < total) header.append("Stopped by you — remaining items stay in this wallet.\n");
+
+        if (sentCoinIds.isEmpty()) {
+            showReport(error == null ? "Collection send" : "Collection send stopped",
+                    header.toString(), null, null);
+            return;
         }
+        trackConfirmations(g, recipient, header.toString(), new ArrayList<>(sentCoinIds), txpowids);
+    }
+
+    // =============================================================================================
+    // Confirmation tracking — "sent" means ON-CHAIN, not "broadcast"
+    // =============================================================================================
+
+    private static final long CONFIRM_POLL_MS = 20_000;
+    private static final int  CONFIRM_MAX_POLLS = 45;   // 15 minutes
+
+    /**
+     * Poll the node until every broadcast coin has LEFT the live coin set (its spend confirmed in
+     * a block). A mined transaction can still evaporate before block inclusion (Doze, dropped
+     * peers), so completion is only claimed on chain evidence; after 15 minutes the leftovers are
+     * offered for one-tap retry. Screen held on while tracking.
+     */
+    private void trackConfirmations(final Group g, final String recipient, final String zHeader,
+                                    final List<String> zRemaining, final List<String> txpowids) {
+        final TextView msg = new TextView(act);
+        msg.setTextIsSelectable(true);
+        msg.setTextColor(Design.text());
+        msg.setTextSize(13f);
+        msg.setPadding(dp(24), dp(16), dp(24), dp(8));
+        ScrollView wrap = new ScrollView(act);
+        wrap.addView(msg);
+
+        final boolean[] stopped = {false};
+        final androidx.appcompat.app.AlertDialog td = new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Confirming on-chain")
+                .setView(wrap)
+                .setCancelable(false)
+                .setNegativeButton("Hide (keeps confirming)", (d, w) -> stopped[0] = true)
+                .create();
+        td.setOnDismissListener(d -> stopped[0] = true);
+        td.show();
+        if (td.getWindow() != null) {
+            td.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+
+        final int totalSent = zRemaining.size();
+        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        final int[] polls = {0};
+
+        final Runnable poll = new Runnable() {
+            @Override public void run() {
+                if (stopped[0] || act.isDestroyed()) return;
+                msg.setText(zHeader + "\nConfirmed " + (totalSent - zRemaining.size()) + " of " + totalSent
+                        + "…\n\nKeep this screen on — a sleeping phone can lose broadcast"
+                        + " transactions before a block includes them.");
+                act.node().coinsRelevant(new NodeApi.Cb() {
+                    @Override public void onResult(org.json.JSONObject json) {
+                        if (stopped[0] || act.isDestroyed()) return;
+                        java.util.HashSet<String> live = new java.util.HashSet<>();
+                        org.json.JSONArray arr = json.optJSONArray("response");
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                org.json.JSONObject c = arr.optJSONObject(i);
+                                if (c != null) live.add(c.optString("coinid", ""));
+                            }
+                        }
+                        zRemaining.retainAll(live);   // gone from live set == spend confirmed
+                        int confirmed = totalSent - zRemaining.size();
+                        if (zRemaining.isEmpty()) {
+                            stopped[0] = true;
+                            td.dismiss();
+                            act.reload();
+                            refresh();
+                            StringBuilder done = new StringBuilder();
+                            done.append(zHeader).append("\nAll ").append(totalSent)
+                                .append(" confirmed ON-CHAIN ✓\n\ntxpowids:\n");
+                            for (String id : txpowids) done.append(id).append("\n");
+                            showReport("Collection sent", done.toString(), null, null);
+                            return;
+                        }
+                        msg.setText(zHeader + "\nConfirmed " + confirmed + " of " + totalSent
+                                + "…\n\nKeep this screen on — a sleeping phone can lose broadcast"
+                                + " transactions before a block includes them.");
+                        schedule();
+                    }
+                    @Override public void onError(String message) {
+                        if (stopped[0] || act.isDestroyed()) return;
+                        schedule();   // transient node hiccup — keep watching
+                    }
+                });
+            }
+            private void schedule() {
+                if (++polls[0] >= CONFIRM_MAX_POLLS) {
+                    stopped[0] = true;
+                    td.dismiss();
+                    offerRetry(g, recipient, zHeader, zRemaining, totalSent, txpowids);
+                    return;
+                }
+                h.postDelayed(this, CONFIRM_POLL_MS);
+            }
+        };
+        h.post(poll);
+    }
+
+    /** 15 minutes without full confirmation: free the stragglers and offer one-tap resend. */
+    private void offerRetry(final Group g, final String recipient, final String zHeader,
+                            final List<String> zRemaining, int totalSent, List<String> txpowids) {
+        for (String id : zRemaining) PENDING.remove(id);   // honest state: they are spendable again
+        refresh();
+        String body = zHeader + "\n" + (totalSent - zRemaining.size()) + " of " + totalSent
+                + " confirmed on-chain.\n" + zRemaining.size() + " item(s) did NOT confirm within 15"
+                + " minutes — their transactions were likely lost before block inclusion. The coins"
+                + " are still in this wallet and safe to resend.";
+        showReport("Some items did not confirm", body,
+                "Retry unconfirmed (" + zRemaining.size() + ")",
+                () -> {
+                    List<JSONObject> fresh = new ArrayList<>();
+                    org.minima.utils.json.JSONArray all = act.coins();
+                    if (all != null) {
+                        for (Object o : all) {
+                            JSONObject c = (JSONObject) o;
+                            if (zRemaining.contains(Nft.str(c, "coinid"))) fresh.add(c);
+                        }
+                    }
+                    if (fresh.isEmpty()) {
+                        Toast.makeText(act, "Couldn't find the coins — refresh and retry from the gallery",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    runCollectionSend(g, fresh, recipient);
+                });
+    }
+
+    /** One report dialog: selectable monospace body, optional action button. */
+    private void showReport(String zTitle, String zBody, String zAction, final Runnable zOnAction) {
         TextView msg = new TextView(act);
-        msg.setText(sb.toString());
+        msg.setText(zBody);
         msg.setTextIsSelectable(true);
         msg.setTypeface(Typeface.MONOSPACE);
         msg.setTextColor(Design.text());
@@ -832,14 +981,11 @@ public class NftView extends BaseView {
         msg.setPadding(dp(20), dp(12), dp(20), dp(8));
         ScrollView wrap = new ScrollView(act);
         wrap.addView(msg);
-        new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle(error == null ? "Collection send" : "Collection send stopped")
+        androidx.appcompat.app.AlertDialog.Builder b = new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle(zTitle)
                 .setView(wrap)
-                .setPositiveButton("OK", null)
-                .show();
-        if (mViewer != null) mViewer.dismiss();
-        if (mBrowser != null) mBrowser.dismiss();
-        refresh();
-        act.reload();
+                .setNegativeButton("Close", null);
+        if (zAction != null) b.setPositiveButton(zAction, (d, w) -> zOnAction.run());
+        b.show();
     }
 }
