@@ -70,6 +70,15 @@ public class SettingsView extends BaseView {
             container.addView(outlineButton("Restore keyuses backup…", v -> restore()));
         }
 
+        // --- Sweep --------------------------------------------------------------------------------
+        container.addView(sectionTitle("SWEEP"));
+        container.addView(outlineButton("Sweep everything to a new address…",
+                v -> new SweepFlow(act).start()));
+        container.addView(hint("Moves ALL funds, tokens and NFTs (state included) to one destination "
+                + "address in a single guided action — e.g. migrating this wallet to a fresh seed. "
+                + "NFTs and StateNFTs transfer whole with their state replayed; everything else is "
+                + "batched. Nothing is called swept until the chain confirms it."));
+
         // --- Seed backup --------------------------------------------------------------------------
         container.addView(sectionTitle("SEED & BACKUP"));
         container.addView(outlineButton("Reveal seed phrase", v -> revealSeed()));

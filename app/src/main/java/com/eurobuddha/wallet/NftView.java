@@ -68,6 +68,18 @@ public class NftView extends BaseView {
         return true;
     }
 
+    /** The shared double-send guard, for other send flows (SweepFlow). */
+    static java.util.Set<String> pendingCoinIds() {
+        java.util.HashSet<String> out = new java.util.HashSet<>();
+        for (String id : new java.util.ArrayList<>(PENDING.keySet())) {
+            if (isPending(id)) out.add(id);
+        }
+        return out;
+    }
+
+    static void markPending(String zCoinId)  { PENDING.put(zCoinId, System.currentTimeMillis()); }
+    static void clearPending(String zCoinId) { PENDING.remove(zCoinId); }
+
     private final LinearLayout grid;
     private final TextView status;
 
