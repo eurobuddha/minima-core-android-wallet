@@ -47,6 +47,7 @@ public class SeedVaultC1Test {
         public boolean contains() { return mHex != null; }
         public String read() { return mHex; }
         public void write(String hex) { mHex = hex; }
+        public void delete() { mHex = null; }
     }
 
     private static byte[] backupOf(String seed, boolean trusted, Map<Integer, Integer> uses) throws Exception {

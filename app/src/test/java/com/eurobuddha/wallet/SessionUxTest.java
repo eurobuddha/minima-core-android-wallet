@@ -44,6 +44,7 @@ public class SessionUxTest {
         public boolean contains() { return mHex != null; }
         public String read() { return mHex; }
         public void write(String hex) { mHex = hex; }
+        public void delete() { mHex = null; }
     }
 
     // =============================================================================================
@@ -91,6 +92,30 @@ public class SessionUxTest {
         assertTrue(reopened.open(NEW));
         assertEquals("index 0 preserved through re-encrypt", 5, fresh.currentUses(0));
         assertEquals("higher index 3 preserved through re-encrypt", 9, fresh.currentUses(3));
+    }
+
+    // =============================================================================================
+    // Wallet reset: wipe() erases the blob, locks the session, and onboarding re-opens (exists=false)
+    // =============================================================================================
+    @Test
+    public void wipe_erasesVaultAndLocks() {
+        MemBlobStore store = new MemBlobStore();
+        SeedVault v = new SeedVault(store, new InMemoryKeyUses());
+        v.createNew(SEED, OLD);
+        assertTrue("vault exists after create", v.exists());
+        assertTrue("session open after create", v.isOpen());
+
+        v.wipe();
+
+        assertFalse("blob deleted", v.exists());
+        assertFalse("session locked", v.isOpen());
+        assertFalse("old passphrase can no longer open anything",
+                new SeedVault(store, new InMemoryKeyUses()).open(OLD));
+        // Fresh start works exactly like first-run onboarding.
+        SeedVault fresh = new SeedVault(store, new InMemoryKeyUses());
+        fresh.createNew("a different brand new seed phrase", NEW);
+        assertTrue(fresh.exists());
+        assertTrue(fresh.isKeyUsesTrusted());
     }
 
     // =============================================================================================

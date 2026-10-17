@@ -119,6 +119,19 @@ public final class WalletSession implements DefaultLifecycleObserver {
         mBackgroundedAt = 0L;
     }
 
+    /**
+     * FULL WALLET RESET — permanently erase the vault blob and both keyuses mirrors from this
+     * device and lock the session, returning the app to onboarding (the vault no longer
+     * {@code exists()}). The seed is unrecoverable from this device afterwards. The caller MUST
+     * have auth-gated (passphrase re-entry) and taken an explicit typed confirmation first, and
+     * should also disable biometric unlock (it stores the now-dead passphrase).
+     */
+    public void resetWallet() {
+        mVault.wipe();                       // delete blob + lock (throws if the delete fails)
+        mKeyUses.clearAllForWalletReset();   // counters belong to the erased seed
+        mBackgroundedAt = 0L;
+    }
+
     // --- ProcessLifecycleOwner (whole-app foreground/background) ----------------------------------
 
     @Override

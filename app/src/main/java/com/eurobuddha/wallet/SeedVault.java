@@ -80,6 +80,7 @@ public class SeedVault {
         boolean contains();
         String read();                 // null if none
         void write(String hex);        // durable; throws IllegalStateException on failure
+        void delete();                 // durable removal; throws IllegalStateException on failure
     }
 
     private final BlobStore mStore;
@@ -114,6 +115,11 @@ public class SeedVault {
                 throw new IllegalStateException("Failed to persist wallet vault");
             }
         }
+        @Override public void delete() {
+            if (!mPrefs.edit().remove(KEY_BLOB).commit()) {
+                throw new IllegalStateException("Failed to delete wallet vault");
+            }
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -142,6 +148,19 @@ public class SeedVault {
     /** Whether the current keyuses record is trustworthy (drives the signing fail-safe). */
     public boolean isKeyUsesTrusted() {
         return mOpen && mTrusted;
+    }
+
+    /**
+     * PERMANENTLY erase the stored vault from this device and lock the session (wallet reset).
+     * After this, {@link #exists()} is false and the app returns to onboarding. The seed is gone
+     * from this device — recovery is only possible from the written-down phrase or an exported
+     * encrypted backup. The caller MUST have auth-gated (passphrase) and loudly confirmed this
+     * with the user, and should clear the keyuses mirrors too ({@link PrefsKeyUses}
+     * {@code clearAllForWalletReset}) since they belong to the erased seed.
+     */
+    public void wipe() {
+        mStore.delete();
+        lock();
     }
 
     /** Lock the session, wiping the in-memory seed + passphrase. */

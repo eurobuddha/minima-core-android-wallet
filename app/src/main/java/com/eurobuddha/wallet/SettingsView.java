@@ -150,6 +150,15 @@ public class SettingsView extends BaseView {
             Design.set(act, Design.next());
             act.recreate();
         }));
+
+        // --- Danger zone ---------------------------------------------------------------------------
+        container.addView(sectionTitle("DANGER ZONE"));
+        container.addView(dangerButton("Reset wallet — erase seed from this device…", v -> resetWallet()));
+        container.addView(hint("Permanently erases the seed vault, the keyuses counters and biometric "
+                + "unlock from THIS device and returns to onboarding, so you can set up a new or "
+                + "different seed. It does NOT touch the chain: any funds still on this seed stay "
+                + "on-chain and are only reachable again from the written-down phrase or an encrypted "
+                + "backup. Sweep the funds out, or export a backup, BEFORE resetting."));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -502,6 +511,79 @@ public class SettingsView extends BaseView {
                     } else {
                         Toast.makeText(act, "Passphrase changed", Toast.LENGTH_LONG).show();
                     }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Reset wallet — the ONLY path that erases the configured seed from this device
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Step 1: prove ownership by re-entering the wallet passphrase (same gate as seed reveal).
+     * Without this, anyone holding an unlocked phone could destroy the vault.
+     */
+    private void resetWallet() {
+        final EditText pass = passwordField("Wallet passphrase");
+        new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Reset wallet")
+                .setMessage("This will PERMANENTLY erase the seed from this device. Confirm your wallet "
+                        + "passphrase to continue.")
+                .setView(wrap(pass))
+                .setPositiveButton("Continue", (d, w) -> {
+                    try {
+                        if (!act.vault().open(pass.getText().toString())) {
+                            Toast.makeText(act, "Wrong passphrase", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                    } catch (SeedVault.VaultCorruptException corrupt) {
+                        // A damaged vault can't prove the passphrase — still allow the reset (it is
+                        // the only way out of a bricked vault), but say what's happening.
+                        confirmReset(true);
+                        return;
+                    }
+                    confirmReset(false);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /** Step 2: the final, typed confirmation. The user must type RESET exactly. */
+    private void confirmReset(boolean zVaultDamaged) {
+        final EditText typed = new EditText(act);
+        typed.setHint("type RESET to confirm");
+        typed.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        typed.setTextColor(Design.text());
+        typed.setHintTextColor(Design.dim());
+        new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Erase this wallet?")
+                .setMessage((zVaultDamaged
+                        ? "NOTE: the stored vault is DAMAGED and could not be opened — resetting is the "
+                        + "only way to recover this app.\n\n" : "")
+                        + "This erases the seed, the one-time-signature (keyuses) counters and biometric "
+                        + "unlock from this device, and cannot be undone here.\n\n"
+                        + "Any funds still on this seed remain on-chain but become unreachable from this "
+                        + "device. You can only recover them later from the written-down seed phrase or an "
+                        + "encrypted backup — and after a bare re-import, signing stays blocked until you "
+                        + "re-enter the signatures-used count.\n\n"
+                        + "If this wallet still holds anything, Cancel and use SWEEP or export a backup "
+                        + "first.\n\nType RESET to confirm.")
+                .setView(wrap(typed))
+                .setPositiveButton("Erase wallet", (d, w) -> {
+                    if (!"RESET".equals(typed.getText().toString().trim())) {
+                        Toast.makeText(act, "Not reset — you must type RESET exactly", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    try {
+                        act.session().resetWallet();
+                    } catch (Exception e) {
+                        Toast.makeText(act, "Reset failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    BiometricUnlock.disable(act);   // it stored the now-dead passphrase
+                    Toast.makeText(act, "Wallet erased. Set up a new or imported seed.", Toast.LENGTH_LONG).show();
+                    act.recreate();                 // !vault.exists() → onboarding
                 })
                 .setNegativeButton("Cancel", null)
                 .show();

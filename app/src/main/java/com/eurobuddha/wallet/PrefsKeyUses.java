@@ -93,6 +93,22 @@ public class PrefsKeyUses implements KeyUses {
         }
     }
 
+    /**
+     * WALLET RESET ONLY — durably erase BOTH mirrors. This is the one deliberate exception to the
+     * raise-never-lower invariant: the counters belong to the seed being erased, and carrying them
+     * to a NEW seed would burn its leaves and misreport "Signatures used". Only call AFTER the
+     * vault blob is deleted ({@link SeedVault#wipe()}), never from any signing flow. If the SAME
+     * seed is later re-imported bare, the untrusted-import fail-safe blocks signing until the user
+     * attests a count — exactly as on a fresh install.
+     */
+    public synchronized void clearAllForWalletReset() {
+        boolean okA = mMirrorA.edit().clear().commit();
+        boolean okB = mMirrorB.edit().clear().commit();
+        if (!okA || !okB) {
+            throw new IllegalStateException("KeyUses: failed to durably clear mirrors on wallet reset");
+        }
+    }
+
     @Override
     public synchronized void recordExternalUses(int zKeyIndex, int zUses) {
         int merged = Math.max(currentUses(zKeyIndex), zUses);
