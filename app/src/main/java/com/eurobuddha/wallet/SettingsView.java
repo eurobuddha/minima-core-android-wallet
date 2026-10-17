@@ -100,6 +100,7 @@ public class SettingsView extends BaseView {
             container.addView(kv("Biometric unlock", "Not available on this device"));
         } else if (bioEnabled) {
             container.addView(kv("Biometric unlock", "Enabled"));
+            container.addView(outlineButton("Recover passphrase (fingerprint)…", v -> recoverPassphrase()));
             container.addView(outlineButton("Disable biometric unlock", v -> disableBiometric()));
         } else {
             container.addView(outlineButton("Enable biometric unlock", v -> enableBiometric()));
@@ -404,6 +405,39 @@ public class SettingsView extends BaseView {
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    /**
+     * Recover a FORGOTTEN wallet passphrase from the biometric store. The fingerprint-gated Keystore
+     * key decrypts the same stored ciphertext the unlock screen uses, so this is exactly as strong as
+     * a biometric unlock — it reveals nothing a fingerprint couldn't already open. Shown seed-style:
+     * selectable on screen, deliberately NOT copyable to the clipboard.
+     */
+    private void recoverPassphrase() {
+        BiometricUnlock.unlock(act, new BiometricUnlock.UnlockCallback() {
+            @Override public void onPassphrase(String zPassphrase) {
+                TextView tv = new TextView(act);
+                tv.setText(zPassphrase);
+                tv.setTextIsSelectable(true);
+                tv.setTypeface(Typeface.MONOSPACE);
+                tv.setTextColor(Design.text());
+                tv.setTextSize(15f);
+                tv.setPadding(dp(act, 8), dp(act, 8), dp(act, 8), dp(act, 8));
+                new androidx.appcompat.app.AlertDialog.Builder(act)
+                        .setTitle("Your wallet passphrase")
+                        .setMessage("Write it down somewhere safe — biometric unlock dies with this "
+                                + "device (or if your fingerprints change), and then only this "
+                                + "passphrase (or your encrypted backup) gets you back in.")
+                        .setView(wrap(tv))
+                        .setNegativeButton("Close", null)
+                        .show();
+            }
+            @Override public void onError(String message, boolean invalidated) {
+                Toast.makeText(act, "Could not recover: " + message, Toast.LENGTH_LONG).show();
+                if (invalidated) refresh();
+            }
+            @Override public void onCancelled() { /* user backed out */ }
+        });
     }
 
     private void disableBiometric() {
