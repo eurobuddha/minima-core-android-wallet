@@ -32,6 +32,10 @@ public class SweepPlanTest {
         c.put("address", addr);
         c.put("amount", amount);
         c.put("tokenid", tokenid);
+        // Consensus fields needed to reconstruct the Coin locally (real size measurement).
+        c.put("mmrentry", "100");
+        c.put("created", "1000");
+        c.put("storestate", true);
         return c;
     }
 
@@ -39,11 +43,16 @@ public class SweepPlanTest {
         JSONObject t = new JSONObject();
         t.put("name", name);
         t.put("script", script);
+        // Descriptor fields needed to reconstruct the Token locally (real size measurement).
+        t.put("coinid", "0xEE");
+        t.put("scale", "0");
+        t.put("totalamount", "1");
+        t.put("created", "900");
         return t;
     }
 
     private static JSONObject stateNftCoin(String id, String addr, String stamp) {
-        JSONObject c = coin(id, addr, "0.000000000000001", "0xNFT" + id);
+        JSONObject c = coin(id, addr, "0.000000000000001", "0xDD" + id.substring(2));
         c.put("token", tokenNode("Panda", "LET s=PREVSTATE(0) IF s EQ 0 AND SIGNEDBY(0xCAFE) THEN"
                 + " RETURN TRUE ENDIF RETURN SAMESTATE(0 1) AND"
                 + " VERIFYOUT(@INPUT GETOUTADDR(@INPUT) @AMOUNT @TOKENID TRUE)"));
@@ -120,8 +129,8 @@ public class SweepPlanTest {
             assertFalse(j.whole);
         }
 
-        // 6 coins on 6 distinct addresses (all ours via 0xA/0xB/0xC prefixes impossible —
-        // use two prefixes × variants): key cap of 4 distinct addresses per chunk.
+        // 6 coins on 6 distinct addresses: the key/byte caps split them (each new key costs a
+        // ~9K signature against the byte budget), never more than MAX_KEYS_PER_TXN keys per txn.
         JSONArray spread = new JSONArray();
         String[] addrs = {"0xA1", "0xA2", "0xA3", "0xB1", "0xB2", "0xB3"};
         SweepFlow.KeyLookup manyKeys = a -> {
@@ -130,8 +139,67 @@ public class SweepPlanTest {
         };
         for (int i = 0; i < addrs.length; i++) spread.add(coin("0xD" + i, addrs[i], "1", MINIMA));
         SweepFlow.Plan p2 = SweepFlow.plan(spread, manyKeys, new HashSet<>());
-        assertEquals("key-capped chunks (4 + 2)", 2, p2.jobs.size());
-        assertEquals("4 sigs then 2", 6, p2.signatures);
+        assertEquals("all six coins planned", 6, p2.coinIds().size());
+        assertEquals("one signature per address", 6, p2.signatures);
+        int maxKeys = 0;
+        for (SweepFlow.Job j : p2.jobs) {
+            HashSet<String> keys = new HashSet<>();
+            for (Object o : j.coins) keys.add(String.valueOf(((JSONObject) o).get("address")));
+            maxKeys = Math.max(maxKeys, keys.size());
+            assertTrue("byte budget respected", j.estBytes <= SweepFlow.TXN_BYTE_BUDGET);
+        }
+        assertTrue("key cap respected", maxKeys <= SweepFlow.MAX_KEYS_PER_TXN);
+        assertTrue("chunked into more than one txn", p2.jobs.size() >= 2);
+    }
+
+    @Test
+    public void heavyStateNft_flaggedOversizedAndOrderedLast() {
+        // ~20K of sealed state → estimate blows the 48K budget → warned + attempted LAST.
+        StringBuilder big = new StringBuilder();
+        for (int i = 0; i < 20000; i++) big.append('A');
+        JSONObject heavy = stateNftCoin("0xB16", ADDR_OURS_A, "7");
+        ((JSONArray) heavy.get("state")).add(statevar(1, "[" + big + "]"));
+
+        JSONArray coins = new JSONArray();
+        coins.add(heavy);
+        coins.add(coin("0x01", ADDR_OURS_B, "5", MINIMA));
+        coins.add(stateNftCoin("0x02", ADDR_OURS_A, "1"));   // normal-sized NFT
+
+        SweepFlow.Plan p = SweepFlow.plan(coins, KEYS, new HashSet<>());
+        assertEquals("three jobs", 3, p.jobs.size());
+        assertEquals("one oversized warning", 1, p.oversizedWarnings.size());
+        assertEquals("heavy item attempted LAST", "0xB16",
+                String.valueOf(((JSONObject) p.jobs.get(2).coins.get(0)).get("coinid")));
+        assertTrue("warning names the coin in full",
+                p.oversizedWarnings.get(0).contains("0xB16"));
+    }
+
+    private static JSONObject statevar(int port, String data) {
+        JSONObject s = new JSONObject();
+        s.put("port", String.valueOf(port));
+        s.put("data", data);
+        return s;
+    }
+
+    @Test
+    public void split_halvesAPooledJob() {
+        JSONArray coins = new JSONArray();
+        for (int i = 0; i < 7; i++) coins.add(coin("0xC" + i, ADDR_OURS_A, "1", MINIMA));
+        SweepFlow.Plan p = SweepFlow.plan(coins, KEYS, new HashSet<>());
+        assertEquals(1, p.jobs.size());
+        java.util.List<SweepFlow.Job> halves = SweepFlow.split(p.jobs.get(0));
+        assertEquals(2, halves.size());
+        assertEquals("3 + 4 coins", 7, halves.get(0).coins.size() + halves.get(1).coins.size());
+        assertEquals(3, halves.get(0).coins.size());
+        assertFalse(halves.get(0).whole);
+    }
+
+    @Test
+    public void sizeRefusal_matchesNodeErrorText() {
+        assertTrue(SweepFlow.isSizeRefusal("TxPoW size too large.. 71234/65536"));
+        assertTrue(SweepFlow.isSizeRefusal("Txn too big"));
+        assertFalse(SweepFlow.isSizeRefusal("Insufficient funds"));
+        assertFalse(SweepFlow.isSizeRefusal(null));
     }
 
     @Test

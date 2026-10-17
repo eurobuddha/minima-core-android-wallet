@@ -49,6 +49,20 @@ public final class SweepFlow {
     static final int MAX_INPUTS_PER_TXN = 10;
     static final int MAX_KEYS_PER_TXN   = 4;
 
+    /**
+     * Byte-budget planning against the consensus TxPoW cap (64K, Magic.DEFAULT_TXPOW_SIZE).
+     * txnpost refuses an oversized txn SYNCHRONOUSLY ("TxPoW size too large.. size/max"), so an
+     * overshoot only burns signatures, never coins — but heavy coins (embedded-plate StateNFTs,
+     * big sealed state) must still be planned around, not discovered. Each coin's serialized
+     * size is measured locally; node-side additions are budgeted conservatively:
+     * the coin appears again inside its MMR CoinProof (hence 2×), a classic WOTS signature
+     * chain is ~8.4K, and header/outputs/scripts get fixed slack.
+     */
+    static final int TXN_BYTE_BUDGET = 48 * 1024;
+    static final int SIG_BYTES       = 9 * 1024;   // signature chain + its script proof
+    static final int INPUT_OVERHEAD  = 2 * 1024;   // MMR proof overhead per input
+    static final int TXN_FIXED       = 4 * 1024;   // txpow header, magic, outputs, slack
+
     /** The standard fungible token script — the only script safe to spend pooled. */
     static final String PLAIN_TOKEN_SCRIPT = "RETURN TRUE";
 
@@ -65,14 +79,16 @@ public final class SweepFlow {
         final String tokenid;           // pooled: the token being sent (0x00 = Minima)
         final List<JSONObject> coins;   // the input coins (JSON, from act.coins())
         final String label;             // for progress + report
-        Job(boolean zWhole, String zTokenid, List<JSONObject> zCoins, String zLabel) {
-            whole = zWhole; tokenid = zTokenid; coins = zCoins; label = zLabel;
+        final int estBytes;             // planned txpow size estimate
+        Job(boolean zWhole, String zTokenid, List<JSONObject> zCoins, String zLabel, int zEst) {
+            whole = zWhole; tokenid = zTokenid; coins = zCoins; label = zLabel; estBytes = zEst;
         }
     }
 
     static final class Plan {
         final List<Job> jobs = new ArrayList<>();
         final List<String> skipped = new ArrayList<>();      // human reasons, one per skipped coin
+        final List<String> oversizedWarnings = new ArrayList<>(); // singles estimated over budget
         final Map<String, String> totals = new LinkedHashMap<>(); // display label -> amount summary
         int signatures = 0;                                   // total WOTS leaves the plan consumes
 
@@ -145,13 +161,27 @@ public final class SweepFlow {
         }
 
         // 1. NFTs / state / scripted coins — one transaction each, state replayed verbatim.
+        //    Singles whose ESTIMATE exceeds the byte budget go LAST (attempted anyway — the
+        //    estimate is conservative and a refusal cannot block the rest of the sweep).
         int nftCount = 0;
+        List<Job> heavy = new ArrayList<>();
         for (JSONObject c : wholes) {
             JSONObject tokNode = (c.get("token") instanceof JSONObject) ? (JSONObject) c.get("token") : null;
             Nft.Meta meta = Nft.meta(tokNode);
             int idx = Nft.itemIndex(c);
-            plan.jobs.add(new Job(true, Nft.str(c, "tokenid"), listOf(c),
-                    meta.name + (idx >= 0 ? " #" + idx : "")));
+            String label = meta.name + (idx >= 0 ? " #" + idx : "");
+            int coinBytes = sizeOf(c);
+            //Input coin + its copy inside the MMR CoinProof + the state replayed on the txn.
+            int est = TXN_FIXED + 3 * coinBytes + INPUT_OVERHEAD + SIG_BYTES;
+            Job j = new Job(true, Nft.str(c, "tokenid"), listOf(c), label, est);
+            if (est > TXN_BYTE_BUDGET) {
+                heavy.add(j);
+                plan.oversizedWarnings.add(label + " (" + Nft.str(c, "coinid") + ") — estimated ~"
+                        + (est / 1024) + "K against the chain's 64K transaction cap; it will be"
+                        + " attempted last and reported honestly if the node refuses it");
+            } else {
+                plan.jobs.add(j);
+            }
             plan.signatures++;
             nftCount++;
         }
@@ -165,17 +195,21 @@ public final class SweepFlow {
             chunkInto(plan, e.getValue(), zKeys, e.getKey(), name);
         }
 
-        // 3. Native Minima last.
+        // 3. Native Minima next.
         if (!minima.isEmpty()) {
             plan.totals.put("Minima", minimaTotal + " (" + minima.size() + " coin(s))");
             chunkInto(plan, minima, zKeys, Util.MINIMA_TOKENID, "Minima");
         }
 
+        // 4. Over-budget singles LAST — a refusal there can no longer block anything.
+        plan.jobs.addAll(heavy);
+
         return plan;
     }
 
     /** Chunk a token's coins into pooled jobs: same-address coins grouped (one signature covers
-     *  them all), at most {@link #MAX_KEYS_PER_TXN} keys and {@link #MAX_INPUTS_PER_TXN} inputs. */
+     *  them all), at most {@link #MAX_KEYS_PER_TXN} keys, {@link #MAX_INPUTS_PER_TXN} inputs,
+     *  AND an estimated {@link #TXN_BYTE_BUDGET} bytes per transaction. */
     private static void chunkInto(Plan zPlan, List<JSONObject> zCoins, KeyLookup zKeys,
                                   String zTokenid, String zName) {
         // Group same-address coins together so each chunk needs the fewest signatures.
@@ -183,25 +217,56 @@ public final class SweepFlow {
 
         List<JSONObject> chunk = new ArrayList<>();
         List<String> chunkAddrs = new ArrayList<>();
+        int chunkBytes = 0;
         int part = 1;
         for (JSONObject c : zCoins) {
             String addr = Nft.str(c, "address");
             boolean newKey = !chunkAddrs.contains(addr);
+            int coinCost = 2 * sizeOf(c) + INPUT_OVERHEAD;   // coin in txn + copy in its MMR proof
+            int addCost  = coinCost + (newKey ? SIG_BYTES : 0);
             if (!chunk.isEmpty()
                     && (chunk.size() >= MAX_INPUTS_PER_TXN
-                        || (newKey && chunkAddrs.size() >= MAX_KEYS_PER_TXN))) {
-                zPlan.jobs.add(new Job(false, zTokenid, chunk, zName + " (part " + part++ + ")"));
+                        || (newKey && chunkAddrs.size() >= MAX_KEYS_PER_TXN)
+                        || TXN_FIXED + chunkBytes + addCost > TXN_BYTE_BUDGET)) {
+                zPlan.jobs.add(new Job(false, zTokenid, chunk, zName + " (part " + part++ + ")",
+                        TXN_FIXED + chunkBytes));
                 zPlan.signatures += chunkAddrs.size();
                 chunk = new ArrayList<>();
                 chunkAddrs = new ArrayList<>();
+                chunkBytes = 0;
             }
             chunk.add(c);
+            chunkBytes += 2 * sizeOf(c) + INPUT_OVERHEAD
+                    + (chunkAddrs.contains(addr) ? 0 : SIG_BYTES);
             if (!chunkAddrs.contains(addr)) chunkAddrs.add(addr);
         }
         if (!chunk.isEmpty()) {
-            zPlan.jobs.add(new Job(false, zTokenid, chunk, part == 1 ? zName : zName + " (part " + part + ")"));
+            zPlan.jobs.add(new Job(false, zTokenid, chunk,
+                    part == 1 ? zName : zName + " (part " + part + ")", TXN_FIXED + chunkBytes));
             zPlan.signatures += chunkAddrs.size();
         }
+    }
+
+    /** This coin's serialized byte size, measured from its own data (state and token included).
+     *  Falls back to a safe default when the JSON cannot be reconstructed locally. */
+    static int sizeOf(JSONObject zCoin) {
+        try {
+            return org.minima.objects.base.MiniData
+                    .getMiniDataVersion(TxnFactory.fromCoinJson(zCoin, 0).toCoin()).getLength();
+        } catch (Exception e) {
+            return 1024;
+        }
+    }
+
+    /** Split a pooled job in half (used when the node refuses it as too large). */
+    static List<Job> split(Job zJob) {
+        List<Job> out = new ArrayList<>(2);
+        int mid = zJob.coins.size() / 2;
+        out.add(new Job(false, zJob.tokenid, new ArrayList<>(zJob.coins.subList(0, mid)),
+                zJob.label + " (split A)", zJob.estBytes / 2));
+        out.add(new Job(false, zJob.tokenid, new ArrayList<>(zJob.coins.subList(mid, zJob.coins.size())),
+                zJob.label + " (split B)", zJob.estBytes / 2));
+        return out;
     }
 
     /** Collapse whitespace + trim so formatting differences never misclassify a plain script. */
@@ -289,6 +354,11 @@ public final class SweepFlow {
                 sb.append("\nSkipping ").append(zPlan.skipped.size()).append(" coin(s):\n")
                   .append(joinLines(zPlan.skipped)).append("\n");
             }
+            if (!zPlan.oversizedWarnings.isEmpty()) {
+                sb.append("\n⚠ ").append(zPlan.oversizedWarnings.size())
+                  .append(" heavy item(s) near the chain's transaction size cap:\n")
+                  .append(joinLines(zPlan.oversizedWarnings)).append("\n");
+            }
 
             sb.append("\n").append(zPlan.jobs.size()).append(" transaction(s), ")
               .append(zPlan.signatures).append(" one-time signature(s):");
@@ -304,9 +374,11 @@ public final class SweepFlow {
                 }
             }
 
-            sb.append("\n\nTransactions broadcast one by one; you can stop between them. Nothing is "
-                    + "called swept until the chain confirms it.\n\nThis is IRREVERSIBLE. Once "
-                    + "broadcast it cannot be undone.");
+            sb.append("\n\nTransactions broadcast one by one; you can stop between them. A failed "
+                    + "transaction never stops the rest, and a too-large batch is automatically "
+                    + "split and retried (using a few extra signatures). Nothing is called swept "
+                    + "until the chain confirms it.\n\nThis is IRREVERSIBLE. Once broadcast it "
+                    + "cannot be undone.");
 
             TextView msg = new TextView(act);
             msg.setText(sb.toString());
@@ -359,15 +431,24 @@ public final class SweepFlow {
             pd.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
 
-        next(zPlan, zDest, 0, new ArrayList<>(), new ArrayList<>(), progress, pd, cancelled);
+        next(zPlan, zDest, 0, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
+                progress, pd, cancelled);
+    }
+
+    /** True when the node's refusal is the synchronous txnpost size pre-check — the txn was
+     *  never broadcast, the coins are untouched, and a pooled job can simply be split. */
+    static boolean isSizeRefusal(String zMessage) {
+        String m = zMessage == null ? "" : zMessage.toLowerCase();
+        return m.contains("size too large") || m.contains("too big");
     }
 
     private void next(final Plan zPlan, final String zDest, final int i,
                       final List<String> txpowids, final List<String> sentCoinIds,
+                      final List<String> failures,
                       final TextView progress, final androidx.appcompat.app.AlertDialog pd,
                       final boolean[] cancelled) {
         if (i >= zPlan.jobs.size() || cancelled[0]) {
-            finish(zPlan, zDest, i, txpowids, sentCoinIds, null, pd);
+            finish(zPlan, zDest, i, txpowids, sentCoinIds, failures, pd);
             return;
         }
         final Job job = zPlan.jobs.get(i);
@@ -397,7 +478,9 @@ public final class SweepFlow {
                         }
                     }
                 } catch (Exception e) {
-                    finish(zPlan, zDest, i, txpowids, sentCoinIds, job.label + ": " + e.getMessage(), pd);
+                    //NO COIN LEFT BEHIND: a failed job never halts the batch — record and move on.
+                    failures.add(job.label + ": " + e.getMessage());
+                    next(zPlan, zDest, i + 1, txpowids, sentCoinIds, failures, progress, pd, cancelled);
                     return;
                 }
                 act.node().publish(built, new NodeApi.Cb() {
@@ -407,24 +490,44 @@ public final class SweepFlow {
                             sentCoinIds.add(Nft.str(c, "coinid"));
                         }
                         txpowids.add(Util.extractTxpowid(json, built.getID()));
-                        next(zPlan, zDest, i + 1, txpowids, sentCoinIds, progress, pd, cancelled);
+                        next(zPlan, zDest, i + 1, txpowids, sentCoinIds, failures, progress, pd, cancelled);
                     }
                     @Override public void onError(String message) {
-                        finish(zPlan, zDest, i, txpowids, sentCoinIds, job.label + " broadcast failed: "
-                                + message + " (its signatures are consumed — those leaves are safely skipped)", pd);
+                        //AUTO-FIX: the txnpost size pre-check refuses BEFORE broadcast, so the
+                        //coins are untouched — split the pooled chunk in half and retry both
+                        //halves in place (new signatures; leaves are plentiful at 262144/key).
+                        if (isSizeRefusal(message) && !job.whole && job.coins.size() > 1) {
+                            progress.setText(job.label + " was too large — splitting and retrying…");
+                            zPlan.jobs.remove(i);
+                            zPlan.jobs.addAll(i, split(job));
+                            next(zPlan, zDest, i, txpowids, sentCoinIds, failures, progress, pd, cancelled);
+                            return;
+                        }
+                        String reason;
+                        if (isSizeRefusal(message)) {
+                            reason = job.label + ": the node refused it as TOO LARGE (" + message
+                                    + "). This single coin's minimal transaction exceeds the chain's"
+                                    + " transaction size cap — it was sealed beyond the transfer"
+                                    + " ceiling and CANNOT currently be moved by any wallet.";
+                        } else {
+                            reason = job.label + " broadcast failed: " + message
+                                    + " (its signatures are consumed — those leaves are safely skipped)";
+                        }
+                        failures.add(reason);
+                        next(zPlan, zDest, i + 1, txpowids, sentCoinIds, failures, progress, pd, cancelled);
                     }
                 });
             }
             @Override public void onError(String message) {
-                finish(zPlan, zDest, i, txpowids, sentCoinIds,
-                        job.label + " could not be prepared: " + message, pd);
+                failures.add(job.label + " could not be prepared: " + message);
+                next(zPlan, zDest, i + 1, txpowids, sentCoinIds, failures, progress, pd, cancelled);
             }
         });
     }
 
     /** Broadcasting is over (complete, stopped, or failed) — now confirm ON-CHAIN. */
     private void finish(Plan zPlan, String zDest, int zAttempted, List<String> txpowids,
-                        List<String> sentCoinIds, String zError,
+                        List<String> sentCoinIds, List<String> failures,
                         androidx.appcompat.app.AlertDialog pd) {
         pd.dismiss();
         act.reload();
@@ -432,13 +535,16 @@ public final class SweepFlow {
         StringBuilder header = new StringBuilder();
         header.append("Broadcast ").append(txpowids.size()).append(" of ").append(zPlan.jobs.size())
               .append(" transaction(s) (").append(sentCoinIds.size()).append(" coin(s))\n");
-        if (zError != null) header.append("Stopped: ").append(zError)
-                .append("\nRemaining coins were NOT signed and stay in this wallet.\n");
-        else if (zAttempted < zPlan.jobs.size())
+        if (!failures.isEmpty()) {
+            header.append("\n").append(failures.size()).append(" transaction(s) FAILED — their coins"
+                    + " stay safely in this wallet:\n").append(joinLines(failures)).append("\n");
+        }
+        if (zAttempted < zPlan.jobs.size())
             header.append("Stopped by you — remaining coins stay in this wallet.\n");
 
         if (sentCoinIds.isEmpty()) {
-            showReport(zError == null ? "Sweep" : "Sweep stopped", header.toString(), null, null);
+            showReport(failures.isEmpty() ? "Sweep" : "Sweep — nothing broadcast",
+                    header.toString(), null, null);
             return;
         }
         trackConfirmations(zDest, header.toString(), new ArrayList<>(sentCoinIds), txpowids);
