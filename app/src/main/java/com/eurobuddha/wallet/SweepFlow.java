@@ -85,11 +85,20 @@ public final class SweepFlow {
         }
     }
 
+    static final class AssetTotal {
+        final String tokenid, name, amount;
+        AssetTotal(String tokenid,String name,String amount) {
+            this.tokenid=tokenid;this.name=name;this.amount=amount;
+        }
+    }
+
     static final class Plan {
         final List<Job> jobs = new ArrayList<>();
         final List<String> skipped = new ArrayList<>();      // human reasons, one per skipped coin
         final List<String> oversizedWarnings = new ArrayList<>(); // singles estimated over budget
-        final Map<String, String> totals = new LinkedHashMap<>(); // display label -> amount summary
+        // Preserve distinct assets even when their display names match.
+        final List<AssetTotal> totals = new ArrayList<>();
+        int wholeItems, pendingCount, lockedCount;
         int signatures = 0;                                   // total WOTS leaves the plan consumes
 
         boolean isEmpty() { return jobs.isEmpty(); }
@@ -123,12 +132,13 @@ public final class SweepFlow {
             String coinid = Nft.str(c, "coinid");
             String addr   = Nft.str(c, "address");
 
-            if (zPendingCoinIds != null && zPendingCoinIds.contains(coinid)) {
-                plan.skipped.add(coinid + " — already confirming from an earlier send");
-                continue;
-            }
             if (zKeys.keyIndexFor(addr) == null) {
                 plan.skipped.add(coinid + " — address " + addr + " is not in this wallet");
+                continue;
+            }
+            if (zPendingCoinIds != null && zPendingCoinIds.contains(coinid)) {
+                plan.pendingCount++;
+                plan.skipped.add(coinid + " — already confirming from an earlier send");
                 continue;
             }
 
@@ -142,6 +152,7 @@ public final class SweepFlow {
             JSONObject tokNode = (c.get("token") instanceof JSONObject) ? (JSONObject) c.get("token") : null;
             Nft.Meta meta = Nft.meta(tokNode);
             if (Nft.isUnstampedLocked(meta, c)) {
+                plan.lockedCount++;
                 plan.skipped.add(meta.name + " (" + coinid + ") — UNSTAMPED locked edition; the "
                         + "creator could reclaim it. Stamp it in NFT wallet first");
                 continue;
@@ -185,19 +196,18 @@ public final class SweepFlow {
             plan.signatures++;
             nftCount++;
         }
-        if (nftCount > 0) plan.totals.put("NFT / state items", nftCount + " item(s), sent whole");
+        plan.wholeItems = nftCount;
 
         // 2. Plain fungible tokens — pooled, chunked.
         for (Map.Entry<String, List<JSONObject>> e : fungible.entrySet()) {
             String name = fungibleNames.get(e.getKey());
-            plan.totals.put("Token \"" + name + "\"",
-                    tokenTotals.get(e.getKey()) + " (" + e.getValue().size() + " coin(s))");
+            plan.totals.add(new AssetTotal(e.getKey(),name,tokenTotals.get(e.getKey()).toString()));
             chunkInto(plan, e.getValue(), zKeys, e.getKey(), name);
         }
 
         // 3. Native Minima next.
         if (!minima.isEmpty()) {
-            plan.totals.put("Minima", minimaTotal + " (" + minima.size() + " coin(s))");
+            plan.totals.add(0,new AssetTotal(Util.MINIMA_TOKENID,"Minima",minimaTotal.toString()));
             chunkInto(plan, minima, zKeys, Util.MINIMA_TOKENID, "Minima");
         }
 
@@ -297,8 +307,7 @@ public final class SweepFlow {
         }
         Plan plan = plan(act.coins(), act::keyIndexForAddress, NftView.pendingCoinIds());
         if (plan.isEmpty()) {
-            String why = plan.skipped.isEmpty() ? "This wallet holds no coins."
-                    : "Nothing sendable:\n" + joinLines(plan.skipped);
+            String why = "This wallet has no coins available for sweeping." + remainingSummary(plan);
             showReport("Nothing to sweep", why, null, null);
             return;
         }
@@ -355,70 +364,63 @@ public final class SweepFlow {
         try {
             if (!isValidDestination(zDest)) throw new IllegalArgumentException("Enter a valid Mx address with a correct checksum. Raw 0x addresses are not accepted for Sweep.");
 
-            StringBuilder sb = new StringBuilder();
-            sb.append("SWEEP EVERYTHING to:\n").append(zDest).append("\n");
-            try {
-                String d0x = TxnFactory.parseAddress(zDest).to0xString();
-                Integer ki = act.keyIndexForAddress(d0x);
-                if (ki != null) {
-                    sb.append("\n⚠ That is THIS wallet's own address (key ").append(ki)
-                      .append(") — the sweep would send the coins back to the wallet you are emptying.\n");
-                }
-            } catch (Exception ignore) { }
+            LinearLayout contents = new LinearLayout(act);
+            contents.setOrientation(LinearLayout.VERTICAL);
+            contents.setPadding(dp(24),dp(8),dp(24),dp(16));
+            reviewText(contents,"You’re sending",true);
+            for (AssetTotal asset : zPlan.totals)
+                reviewText(contents,asset.amount + "  " + asset.name,false);
+            if(zPlan.wholeItems>0)reviewText(contents,String.format(java.util.Locale.ROOT,"NFTs and other whole items: %s",zPlan.wholeItems),false);
 
-            sb.append("\nMoving:\n");
-            for (Map.Entry<String, String> e : zPlan.totals.entrySet()) {
-                sb.append("  ").append(e.getKey()).append(": ").append(e.getValue()).append("\n");
-            }
-            if (!zPlan.skipped.isEmpty()) {
-                sb.append("\nSkipping ").append(zPlan.skipped.size()).append(" coin(s):\n")
-                  .append(joinLines(zPlan.skipped)).append("\n");
-            }
-            if (!zPlan.oversizedWarnings.isEmpty()) {
-                sb.append("\n⚠ ").append(zPlan.oversizedWarnings.size())
-                  .append(" heavy item(s) near the chain's transaction size cap:\n")
-                  .append(joinLines(zPlan.oversizedWarnings)).append("\n");
-            }
+            reviewText(contents,"Receiving address",true);
+            TextView address=reviewText(contents,zDest,false);
+            address.setTypeface(Typeface.MONOSPACE);
+            address.setTextSize(14f);
+            address.setTextDirection(android.view.View.TEXT_DIRECTION_LTR);
+            reviewText(contents,"Check this against the receiving wallet. A valid address does not prove you can access it.",false);
+            String d0x = TxnFactory.parseAddress(zDest).to0xString();
+            if(act.keyIndexForAddress(d0x)!=null)reviewText(contents,"This address belongs to this wallet. These assets would stay in this wallet.",false);
 
-            sb.append("\n").append(zPlan.jobs.size()).append(" transaction(s), ")
-              .append(zPlan.signatures).append(" one-time signature(s):");
-            List<Integer> seen = new ArrayList<>();
-            for (Job j : zPlan.jobs) {
-                for (JSONObject c : j.coins) {
-                    Integer ki = act.keyIndexForAddress(Nft.str(c, "address"));
-                    if (ki != null && !seen.contains(ki)) {
-                        seen.add(ki);
-                        sb.append("\n  Key ").append(ki).append(": next signature #")
-                          .append(act.keyUses().currentUses(ki)).append(" of ").append(Util.WOTS_MAX_USES);
-                    }
-                }
+            String remaining=remainingSummary(zPlan);
+            if(!remaining.isEmpty()) {
+                reviewText(contents,"Not included",true);
+                reviewText(contents,remaining.trim(),false);
             }
-
-            sb.append("\n\nTransactions broadcast one by one; you can stop between them. A failed "
-                    + "transaction never stops the rest, and a too-large batch is automatically "
-                    + "split and retried (using a few extra signatures). Nothing is called swept "
-                    + "until the chain confirms it.\n\nThis is IRREVERSIBLE. Once broadcast it "
-                    + "cannot be undone.");
-
-            TextView msg = new TextView(act);
-            msg.setText(sb.toString());
-            msg.setTextIsSelectable(true);
-            msg.setTypeface(Typeface.MONOSPACE);
-            msg.setTextColor(Design.text());
-            msg.setTextSize(12f);
-            msg.setPadding(dp(20), dp(12), dp(20), dp(8));
+            if(!zPlan.oversizedWarnings.isEmpty())
+                reviewText(contents,String.format(java.util.Locale.ROOT,"Large items: %s. These may exceed the network’s size limit and stay here. Other assets can still move.",zPlan.oversizedWarnings.size()),false);
+            reviewText(contents,"This moves all available assets shown above. Completed transfers cannot be undone.",false);
+            reviewText(contents,"Nothing is sent yet. Next, confirm the receiving address.",false);
             ScrollView wrap = new ScrollView(act);
-            wrap.addView(msg);
+            wrap.addView(contents);
 
             new androidx.appcompat.app.AlertDialog.Builder(act)
-                    .setTitle("Confirm sweep — review carefully")
+                    .setTitle("Review sweep")
                     .setView(wrap)
                     .setPositiveButton("Confirm destination…", (d, w) -> confirmDestination(zPlan, zDest))
+                    .setNeutralButton("Edit address", (d, w) -> promptDestination(zPlan))
                     .setNegativeButton("Cancel", null)
                     .show();
         } catch (Exception e) {
             Toast.makeText(act, String.valueOf(e.getMessage()), Toast.LENGTH_LONG).show();
         }
+    }
+
+    private TextView reviewText(LinearLayout parent,String text,boolean heading) {
+        TextView view=new TextView(act);
+        view.setText(text);view.setTextColor(Design.text());view.setTextIsSelectable(true);
+        view.setTextSize(16f);
+        view.setTypeface(Typeface.DEFAULT,heading?Typeface.BOLD:Typeface.NORMAL);
+        view.setPadding(0,dp(heading?16:8),0,0);
+        parent.addView(view,new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT));
+        return view;
+    }
+
+    private String remainingSummary(Plan plan) {
+        StringBuilder text=new StringBuilder();
+        if(plan.pendingCount>0)text.append("\n").append(String.format(java.util.Locale.ROOT,"Already being sent: %s. Wait for those transfers to confirm.",plan.pendingCount));
+        if(plan.lockedCount>0)text.append("\n").append(String.format(java.util.Locale.ROOT,"Locked editions staying here: %s. Stamp them in NFT Wallet before moving them.",plan.lockedCount));
+        return text.toString();
     }
 
     // ---------------------------------------------------------------------------------------------

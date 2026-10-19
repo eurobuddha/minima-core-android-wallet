@@ -14,3 +14,28 @@ Preserved newer standalone commits0b601b8,690e9bc,09e7230,d1cdcf4 (sweep/reset/
 passphrase recovery); no full-source overwrite or source-pin advance.
 Candidate: dist/minima-wallet-0.2.26-candidate.apk with SHA256 sidecar.
 Actual package/version and family signer verified. No install/publication.
+
+minimaWallet0.2.28/code228 — readable Sweep review parity
+Reuses host2.0.21 scripts/pandamonium-sources/wallet/SweepFlow.java review/reviewText/
+remainingSummary, SweepPlanner AssetTotal and owned pending/locked accounting,
+and localization/catalog.json English strings. Retains standalone AlertDialog,
+existing Mx checksum validation, address re-entry and signing/transport boundary.
+Clear asset totals/full destination, edit/cancel, meaningful own-wallet warning,
+owned-only excluded counts and no foreign-node coin/key dump. Same-named assets
+remain distinct rows. Nothing-to-sweep also omits foreign-node diagnostics.
+
+63 debug +63 release tests pass, zero failures/errors/skips. Reuses host real-dialog
+controls/cancel/no-wallet-access tests and duplicate-name/owned-count regression.
+Initial compilation caught one untranslated size-label call; corrected before final
+validation. Offline release/lint pass (0errors,167warnings). APK package/version/
+ZIP/Minima Family certificate verified. Candidate only; not installed or published.
+
+Code Review
+Summary: bounded presentation/accounting port; reviewed complete donor/standalone
+flow and changed planner/UI/tests/build configuration. No execution-path changes.
+Findings: no new blocking finding in this port. Existing standalone broad size-error
+recognition, timeout re-signing, mutable planning/native-state and durable receipt/
+retry parity remain OPEN; this checkpoint does not claim those are repaired.
+Verdict: Approve scoped source checkpoint; wider standalone release review continues.
+Candidate:dist/wallet-0.2.28-candidate.apk
+SHA256:2a527f43fcf946b7b3fdf492de93a6b7bc03ce04ed8ffa4f0eaa126d8c5727b8
