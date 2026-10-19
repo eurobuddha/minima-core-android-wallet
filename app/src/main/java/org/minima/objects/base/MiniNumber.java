@@ -206,6 +206,8 @@ public class MiniNumber implements Streamable, Comparable<MiniNumber> {
 		return new MiniNumber( mNumber.pow(zNumber,MATH_CONTEXT) );
 	}
 	
+	// Unused by this wallet; callers must satisfy BigDecimal.sqrt's Android API requirement.
+	@androidx.annotation.RequiresApi(33)
 	public MiniNumber sqrt() {
 		return new MiniNumber( mNumber.sqrt(MATH_CONTEXT) );
 	}

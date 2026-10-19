@@ -10,8 +10,8 @@ android {
         applicationId "com.eurobuddha.wallet"
         minSdk 28
         targetSdk 35
-        versionCode 225
-        versionName "0.2.25"
+        versionCode 226
+        versionName "0.2.26"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -47,6 +47,7 @@ android {
         buildConfig true
     }
     testOptions {
+        unitTests.returnDefaultValues = true
         unitTests.all {
             testLogging {
                 events "passed", "failed"
@@ -98,5 +99,6 @@ dependencies {
     // and the native Minima mark ships as an SVG in res/raw).
     implementation 'com.caverock:androidsvg-aar:1.4'
 
+    testImplementation 'org.mockito:mockito-core:5.12.0'
     testImplementation libs.junit
 }

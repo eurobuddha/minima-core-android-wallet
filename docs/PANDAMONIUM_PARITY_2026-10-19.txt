@@ -1,0 +1,16 @@
+minimaWallet0.2.26/code226 — biometric error-containment checkpoint
+The host and both wallet forms decoded persisted biometric data outside their
+existing secure-key error handler. Reused that handler for preference reads and
+Base64 decode, retaining PIN/passphrase fallback and all key aliases/storage names.
+Three mocked regressions cover malformed ciphertext, malformed IV and wrong prefs
+type. No credential/keystore/phone accessed. Full standalone suite52 tests passes,
+zero failures/errors/skips; signed release build and lint pass (0 errors164 warnings).
+Lint exposed an unused vendor MiniNumber.sqrt helper requiring API33; its explicit
+RequiresApi contract now lets lint guard future callers. No current wallet caller
+exists; minSdk28 and the calculation are unchanged. No replacement arithmetic.
+Reviewed all changed source/config/tests and corresponding host/integrated paths.
+No blocking finding in this narrow repair. Broader wallet parity remains open.
+Preserved newer standalone commits0b601b8,690e9bc,09e7230,d1cdcf4 (sweep/reset/
+passphrase recovery); no full-source overwrite or source-pin advance.
+Candidate: dist/minima-wallet-0.2.26-candidate.apk with SHA256 sidecar.
+Actual package/version and family signer verified. No install/publication.
