@@ -1,0 +1,70 @@
+Sweep destination safeguards — 2026-10-19
+
+Scope: Pandamonium 2.0.16/code211 and standalone minimaWallet 0.2.27/code227.
+User requested Mx-only validated destinations and an additional address confirmation.
+
+Reuse
+Reused org.minima.objects.Address.convertMinimaAddress/makeMinimaAddress unchanged
+from the bundled Minima core. Read Address.java and BaseConverter.java in standalone
+wallet, both SweepFlow review/execution callers, generic Util/TxnFactory validators,
+SettingsView dialog-button wiring and SendView TextWatcher. Inspected Future Cash
+MinimaAddress and its tests; reused its independently checked public golden vector.
+Generic Util is shape-only, TxnFactory allows raw hex, and Future Cash derives rather
+than validates addresses. A small Sweep-specific policy wraps the existing decoder.
+Canonical host source: scripts/pandamonium-sources/wallet/SweepFlow.java.
+Standalone source: wallet/app/src/main/java/com/eurobuddha/wallet/SweepFlow.java.
+
+Behavior
+Typed and scanned destinations must decode with a valid Minima checksum to exactly
+32 bytes and round-trip to the same canonical Mx encoding (case-insensitive).
+Raw 0x, malformed encodings, wrong checksums, wrong decoded lengths, decoder aliases
+and trailing payload are rejected before review. No generic Send policy was changed.
+The existing review now opens a separate final dialog showing the complete address.
+Its signing button remains disabled until the user enters the same full Mx address.
+Execution independently rechecks both validity and the second entry before accessing
+the vault. Standalone's explicit retry returns through review and confirmation too.
+Integrated pending transaction replay retains the existing exact-byte behavior.
+Four host languages updated; standalone retains its existing English UI.
+
+Validation does NOT establish recipient ownership, script spendability or historical
+use. A newly generated address need not appear on-chain. The final prompt explicitly
+states this limitation and asks the user to compare against the receiving wallet.
+
+Evidence
+209 integrated-wallet tests pass;185 host tests pass. The added Robolectric test
+checks real dialog enable/disable behavior and cancellation in all four languages.
+Standalone debug59/release59 tests pass. Public fixture substitutions test every
+single-character change across the Minima alphabet, including correct-length typos.
+Tests cover arbitrary-length checksummed payloads, aliases, trailing data, raw hex,
+malformed input, missing/mismatched confirmation and rejection before wallet access.
+No live transactions, keys or signing counters are involved in these tests.
+Pinned importer verification passes; direct-node transport verification passes;
+6987 messages validate in4 languages. Release build/lint and artifact records follow.
+
+Code Review
+Summary: the narrow wrapper reuses Minima cryptography; all new Sweep entry paths
+require validation and confirmation. The reviewed destination is captured and cannot
+be replaced by editing the confirmation. Integrated session guards remain intact.
+Findings: no blocking defect found in this change. The standalone retry initially
+called execution directly; this was corrected to return through review, then tested.
+Verdict: approve this safeguard. This does not approve the unfinished full app review.
+
+Device recovery
+2.0.15 was installed on authorized Fold R3GL805K7MB after reboot, preserving data.
+Vestr Creator/Collector/About checks passed across repeated portrait/landscape
+rotation: tab widths416px portrait,615/616px landscape, stable process6825. Original
+user_rotation0 restored; accelerometer_rotation0 unchanged. Evidence:
+build/localization/fold-resume-2.0.15/vestr-device-check.json and screenshots/XML.
+Wallet unlocked, Receive and Settings observed; key0 counter5/262144 before checks.
+Sweep execution has not been invoked. Physical 2.0.16 review/cancel is still pending.
+Full feature review/parity remains IN PROGRESS; no candidate has been published.
+
+Signed local candidates; not published
+Release builds and lint pass: host0 errors/fatals,1821 warnings; standalone0 errors/fatals,166 warnings.
+Actual APK ZIP integrity, package/version and release certificate verified.
+Host APK Keets worklet and21 addons/runtime per ABI verified.
+/Users/eurobuddha/Projects/minima/apks/base/dist/pandamonium-2.0.16-candidate.apk
+SHA256 65e368d98fb4ad1a8605801e24297ae720f8cbf7616b35056312c9d8b00f5116
+/Users/eurobuddha/Projects/minima/apks/wallet/dist/wallet-0.2.27-candidate.apk
+SHA256 81fba5bf4d4e2bf835b9cd17885587951b47086ed7b88f6e8d12205c18bb0a28
+Certificate SHA256 eca1383c9d27683a281fbe6355356267877dc2dd14d963d7cc289ca0700e517f

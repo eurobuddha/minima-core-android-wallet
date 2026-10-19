@@ -307,7 +307,7 @@ public final class SweepFlow {
 
     private void promptDestination(final Plan zPlan) {
         final EditText addr = new EditText(act);
-        addr.setHint("Destination address (Mx… or 0x…)");
+        addr.setHint("Destination Mx address");
         addr.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         addr.setTextColor(Design.text());
         TextView note = new TextView(act);
@@ -331,9 +331,29 @@ public final class SweepFlow {
                 .show();
     }
 
+    /** Validate Minima's checksum, a 32-byte address and its canonical Mx encoding.
+     * This cannot establish that another wallet holds the corresponding spending keys. */
+    static boolean isValidDestination(String destination) {
+        if (destination == null || destination.length() > 128
+                || !destination.matches("(?i)Mx[0-9a-z]+")) return false;
+        try {
+            MiniData address = org.minima.objects.Address.convertMinimaAddress(destination);
+            return address.getLength() == 32
+                    && org.minima.objects.Address.makeMinimaAddress(address).equalsIgnoreCase(destination);
+        } catch (RuntimeException invalid) {
+            return false;
+        }
+    }
+
+    static boolean destinationConfirmed(String destination, String confirmation) {
+        return isValidDestination(destination) && confirmation != null
+                && destination.equalsIgnoreCase(confirmation)
+                && isValidDestination(confirmation);
+    }
+
     private void review(final Plan zPlan, final String zDest) {
         try {
-            if (!Util.isValidAddress(zDest)) throw new IllegalArgumentException("Invalid destination address");
+            if (!isValidDestination(zDest)) throw new IllegalArgumentException("Enter a valid Mx address with a correct checksum. Raw 0x addresses are not accepted for Sweep.");
 
             StringBuilder sb = new StringBuilder();
             sb.append("SWEEP EVERYTHING to:\n").append(zDest).append("\n");
@@ -393,7 +413,7 @@ public final class SweepFlow {
             new androidx.appcompat.app.AlertDialog.Builder(act)
                     .setTitle("Confirm sweep — review carefully")
                     .setView(wrap)
-                    .setPositiveButton("Sign & broadcast all", (d, w) -> run(zPlan, zDest))
+                    .setPositiveButton("Confirm destination…", (d, w) -> confirmDestination(zPlan, zDest))
                     .setNegativeButton("Cancel", null)
                     .show();
         } catch (Exception e) {
@@ -405,7 +425,44 @@ public final class SweepFlow {
     // Execute — sequential build+sign → publish, same contract as the collection send
     // ---------------------------------------------------------------------------------------------
 
-    private void run(final Plan zPlan, final String zDest) {
+    private void confirmDestination(final Plan zPlan, final String zDest) {
+        if (!isValidDestination(zDest)) return;
+        final EditText confirmation = new EditText(act);
+        confirmation.setHint("Enter the full Mx address again");
+        confirmation.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        confirmation.setTextColor(Design.text());
+        TextView note = new TextView(act);
+        note.setTextColor(Design.text());
+        note.setText("Compare this full address with the receiving wallet, then enter it again. The format and checksum are valid; this does not verify who controls the address. This will send your entire available balance and cannot be undone." + "\n\n" + zDest);
+        note.setTextIsSelectable(true);
+        LinearLayout contents = new LinearLayout(act);
+        contents.setOrientation(LinearLayout.VERTICAL);
+        contents.setPadding(dp(20), dp(8), dp(20), dp(8));
+        contents.addView(note);
+        contents.addView(confirmation, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        ScrollView wrap = new ScrollView(act);
+        wrap.addView(contents);
+        final androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Confirm destination…")
+                .setView(wrap)
+                .setPositiveButton("Sign & broadcast all", (d, w) -> run(zPlan, zDest, confirmation.getText().toString().trim()))
+                .setNegativeButton("Cancel", null)
+                .create();
+        dialog.show();
+        final android.widget.Button execute = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE);
+        execute.setEnabled(false);
+        confirmation.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { }
+            @Override public void afterTextChanged(android.text.Editable text) {
+                execute.setEnabled(destinationConfirmed(zDest, text.toString().trim()));
+            }
+        });
+    }
+
+    private void run(final Plan zPlan, final String zDest, final String confirmation) {
+        if (!destinationConfirmed(zDest, confirmation)) return;
         try {
             act.vault().assertSigningAllowed();
         } catch (SeedVault.SigningNotAllowedException block) {
@@ -667,7 +724,7 @@ public final class SweepFlow {
                                 Toast.LENGTH_LONG).show();
                         return;
                     }
-                    run(retry, zDest);
+                    review(retry, zDest);
                 });
     }
 
