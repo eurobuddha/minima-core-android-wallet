@@ -9,6 +9,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -119,6 +121,13 @@ public final class SweepFlow {
     static Plan plan(JSONArray zCoins, KeyLookup zKeys, Set<String> zPendingCoinIds) {
         Plan plan = new Plan();
         if (zCoins == null) return plan;
+        // The review must own its data; a later balance/gallery refresh cannot rewrite its inputs.
+        try { zCoins=(JSONArray)new org.minima.utils.json.parser.JSONParser().parse(zCoins.toString()); }
+        catch(Exception invalid){throw new IllegalArgumentException("Invalid sweep coin list",invalid);}
+        Set<String> seen=new HashSet<>();
+        Set<String> pending=new HashSet<>();
+        if(zPendingCoinIds!=null)for(String id:zPendingCoinIds)
+            if(id!=null)pending.add(id.toLowerCase(Locale.ROOT));
 
         List<JSONObject> minima = new ArrayList<>();
         Map<String, List<JSONObject>> fungible = new LinkedHashMap<>();   // tokenid -> coins
@@ -128,22 +137,26 @@ public final class SweepFlow {
         Map<String, MiniNumber> tokenTotals = new LinkedHashMap<>();
 
         for (Object o : zCoins) {
+            if(!(o instanceof JSONObject))throw new IllegalArgumentException("Invalid sweep coin");
             JSONObject c = (JSONObject) o;
             String coinid = Nft.str(c, "coinid");
             String addr   = Nft.str(c, "address");
+            if(coinid.isEmpty()||addr.isEmpty()||!seen.add(coinid.toLowerCase(java.util.Locale.ROOT)))
+                throw new IllegalArgumentException("Duplicate or incomplete sweep coin");
 
             if (zKeys.keyIndexFor(addr) == null) {
                 plan.skipped.add(coinid + " — address " + addr + " is not in this wallet");
                 continue;
             }
-            if (zPendingCoinIds != null && zPendingCoinIds.contains(coinid)) {
+            if (pending.contains(coinid.toLowerCase(Locale.ROOT))) {
                 plan.pendingCount++;
                 plan.skipped.add(coinid + " — already confirming from an earlier send");
                 continue;
             }
 
             String tokenid = Nft.str(c, "tokenid");
-            if (Util.isMinima(tokenid)) {
+            boolean hasState = hasValidatedState(c);
+            if (Util.isMinima(tokenid) && !hasState) {
                 minima.add(c);
                 minimaTotal = minimaTotal.add(new MiniNumber(Nft.str(c, "amount")));
                 continue;
@@ -158,7 +171,6 @@ public final class SweepFlow {
                 continue;
             }
 
-            boolean hasState   = !Nft.rawStateEntries(c).isEmpty();
             boolean plainToken = normalizeScript(meta.script).equals(PLAIN_TOKEN_SCRIPT);
             if (hasState || !plainToken) {
                 wholes.add(c);
@@ -180,7 +192,7 @@ public final class SweepFlow {
             JSONObject tokNode = (c.get("token") instanceof JSONObject) ? (JSONObject) c.get("token") : null;
             Nft.Meta meta = Nft.meta(tokNode);
             int idx = Nft.itemIndex(c);
-            String label = meta.name + (idx >= 0 ? " #" + idx : "");
+            String label = Util.isMinima(Nft.str(c,"tokenid")) ? "Minima (state)" : meta.name + (idx >= 0 ? " #" + idx : "");
             int coinBytes = sizeOf(c);
             //Input coin + its copy inside the MMR CoinProof + the state replayed on the txn.
             int est = TXN_FIXED + 3 * coinBytes + INPUT_OVERHEAD + SIG_BYTES;
@@ -268,8 +280,37 @@ public final class SweepFlow {
         }
     }
 
+    /** Display parsing is intentionally tolerant; sweep must never discard malformed state. */
+    private static boolean hasValidatedState(JSONObject coin) {
+        if(!coin.containsKey("state"))return false;
+        Object state=coin.get("state");
+        int expected;
+        if(state instanceof JSONArray) {
+            expected=((JSONArray)state).size();
+            for(Object entry:(JSONArray)state) {
+                if(!(entry instanceof JSONObject)
+                    || !(((JSONObject)entry).get("data") instanceof String))
+                    throw new IllegalArgumentException("Invalid sweep state entry");
+            }
+        } else if(state instanceof JSONObject) {
+            expected=((JSONObject)state).size();
+            for(Object value:((JSONObject)state).values())
+                if(!(value instanceof String))throw new IllegalArgumentException("Invalid sweep state data");
+        } else throw new IllegalArgumentException("Invalid sweep state");
+        List<String[]> entries=Nft.rawStateEntries(coin);
+        if(entries.size()!=expected)throw new IllegalArgumentException("Incomplete sweep state");
+        Set<Integer> ports=new HashSet<>();
+        for(String[] entry:entries) {
+            if(!entry[0].matches("[0-9]{1,3}"))throw new IllegalArgumentException("Invalid sweep state port");
+            int port=Integer.parseInt(entry[0]);
+            if(port>255 || !ports.add(port))throw new IllegalArgumentException("Duplicate or invalid sweep state port");
+        }
+        return !entries.isEmpty();
+    }
+
     /** Split a pooled job in half (used when the node refuses it as too large). */
     static List<Job> split(Job zJob) {
+        if(zJob.whole||zJob.coins.size()<2)throw new IllegalArgumentException("Cannot split a whole or single coin");
         List<Job> out = new ArrayList<>(2);
         int mid = zJob.coins.size() / 2;
         out.add(new Job(false, zJob.tokenid, new ArrayList<>(zJob.coins.subList(0, mid)),
@@ -281,7 +322,7 @@ public final class SweepFlow {
 
     /** Collapse whitespace + trim so formatting differences never misclassify a plain script. */
     static String normalizeScript(String zScript) {
-        return zScript == null ? "" : zScript.trim().replaceAll("\\s+", " ").toUpperCase();
+        return zScript == null ? "" : zScript.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
     }
 
     private static List<JSONObject> listOf(JSONObject c) {
@@ -305,13 +346,25 @@ public final class SweepFlow {
                     Toast.LENGTH_LONG).show();
             return;
         }
-        Plan plan = plan(act.coins(), act::keyIndexForAddress, NftView.pendingCoinIds());
+        Plan plan = planForReview(act.coins());
+        if (plan == null) return;
         if (plan.isEmpty()) {
             String why = "This wallet has no coins available for sweeping." + remainingSummary(plan);
             showReport("Nothing to sweep", why, null, null);
             return;
         }
         promptDestination(plan);
+    }
+
+    /** Reject incomplete review data before asking for a destination or signing anything. */
+    private Plan planForReview(JSONArray coins) {
+        try {
+            return plan(coins, act::keyIndexForAddress, NftView.pendingCoinIds());
+        } catch (IllegalArgumentException invalid) {
+            showReport("Cannot review sweep", "The wallet coin data is incomplete or invalid. "
+                    + "Refresh the wallet and try again. Nothing has been signed or sent.", null, null);
+            return null;
+        }
     }
 
     private void promptDestination(final Plan zPlan) {
@@ -521,7 +574,7 @@ public final class SweepFlow {
                 try {
                     try {
                         if (job.whole) {
-                            built = act.factory().buildNftTransfer(inputs.get(0), zDest, Util.newTxnId());
+                            built = act.factory().buildWholeTransfer(inputs.get(0), zDest, Util.newTxnId());
                         } else {
                             MiniNumber sum = MiniNumber.ZERO;
                             for (TxnFactory.InputCoin in : inputs) sum = sum.add(in.getAmount());
@@ -711,6 +764,11 @@ public final class SweepFlow {
                     JSONArray all = act.coins();
                     if (all != null) {
                         for (Object o : all) {
+                            if (!(o instanceof JSONObject)) {
+                                showReport("Cannot review sweep", "The wallet coin data is incomplete or invalid. "
+                                        + "Refresh the wallet and try again. Nothing has been signed or sent.", null, null);
+                                return;
+                            }
                             JSONObject c = (JSONObject) o;
                             if (zRemaining.contains(Nft.str(c, "coinid"))) fresh.add(c);
                         }
@@ -720,7 +778,8 @@ public final class SweepFlow {
                                 Toast.LENGTH_LONG).show();
                         return;
                     }
-                    Plan retry = plan(fresh, act::keyIndexForAddress, NftView.pendingCoinIds());
+                    Plan retry = planForReview(fresh);
+                    if (retry == null) return;
                     if (retry.isEmpty()) {
                         Toast.makeText(act, "Nothing sendable right now — refresh and sweep again",
                                 Toast.LENGTH_LONG).show();

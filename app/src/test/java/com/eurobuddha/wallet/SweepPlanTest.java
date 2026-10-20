@@ -207,6 +207,62 @@ public class SweepPlanTest {
         assertEquals("RETURN TRUE", SweepFlow.normalizeScript("  return   true "));
         assertFalse(SweepFlow.normalizeScript("RETURN SIGNEDBY(0x1)").equals(SweepFlow.PLAIN_TOKEN_SCRIPT));
     }
+    @Test public void nativeMinimaStateIsKeptAsAWholeCoin() {
+        JSONArray coins=new JSONArray();JSONObject c=coin("0x01",ADDR_OURS_A,"5",MINIMA);
+        JSONArray state=new JSONArray();state.add(statevar(1,"[keep this state]"));c.put("state",state);coins.add(c);
+        SweepFlow.Plan p=SweepFlow.plan(coins,KEYS,new HashSet<>());
+        assertEquals(1,p.jobs.size());assertTrue(p.jobs.get(0).whole);assertEquals(MINIMA,p.jobs.get(0).tokenid);
+        assertEquals("[keep this state]",Nft.rawStateEntries(p.jobs.get(0).coins.get(0)).get(0)[1]);
+    }
+    @Test public void plannedCoinAndStateAreDetachedFromMutableWalletCache() {
+        JSONArray coins=new JSONArray();JSONObject c=stateNftCoin("0x01",ADDR_OURS_A,"3");coins.add(c);
+        SweepFlow.Plan p=SweepFlow.plan(coins,KEYS,new HashSet<>());
+        c.put("amount","999");((JSONObject)((JSONArray)c.get("state")).get(0)).put("data","99");coins.clear();
+        assertEquals("0.000000000000001",p.jobs.get(0).coins.get(0).get("amount"));
+        assertEquals("3",Nft.rawStateEntries(p.jobs.get(0).coins.get(0)).get(0)[1]);
+    }
+    @Test public void duplicateCoinIdsCannotCreateTwoJobsOrInflateTotals() {
+        JSONArray coins=new JSONArray();coins.add(coin("0xAA",ADDR_OURS_A,"5",MINIMA));coins.add(coin("0xaa",ADDR_OURS_B,"5",MINIMA));
+        org.junit.Assert.assertThrows(IllegalArgumentException.class,()->SweepFlow.plan(coins,KEYS,new HashSet<>()));
+    }
+    @Test public void malformedRowsCannotBecomeAPartialSweep() {
+        JSONArray coins=new JSONArray();coins.add(coin("0x01",ADDR_OURS_A,"5",MINIMA));coins.add("bad row");
+        org.junit.Assert.assertThrows(IllegalArgumentException.class,()->SweepFlow.plan(coins,KEYS,new HashSet<>()));
+    }
+
+    @Test public void pendingCoinComparisonIsCaseInsensitive() {
+        JSONArray coins=new JSONArray();coins.add(coin("0xAB",ADDR_OURS_A,"5",MINIMA));
+        HashSet<String> pending=new HashSet<>();pending.add("0xab");
+        assertTrue(SweepFlow.plan(coins,KEYS,pending).isEmpty());
+    }
+    @Test public void malformedStateCannotBeSilentlyPooledOrDropped() {
+        JSONArray badRows=new JSONArray();badRows.add("bad state row");
+        JSONArray duplicatePorts=new JSONArray();duplicatePorts.add(statevar(1,"1"));duplicatePorts.add(statevar(1,"2"));
+        JSONArray badPort=new JSONArray();badPort.add(statevar(256,"1"));
+        JSONArray absentData=new JSONArray();JSONObject entry=new JSONObject();entry.put("port",1);absentData.add(entry);
+        JSONObject badMap=new JSONObject();badMap.put("1",new JSONObject());
+        for(Object state:new Object[]{null,"broken",badRows,duplicatePorts,badPort,absentData,badMap}) {
+            JSONArray coins=new JSONArray();JSONObject c=coin("0x01",ADDR_OURS_A,"5",MINIMA);
+            c.put("state",state);coins.add(c);
+            org.junit.Assert.assertThrows(IllegalArgumentException.class,()->SweepFlow.plan(coins,KEYS,new HashSet<>()));
+        }
+    }
+    @Test public void stateMapIsPreservedAsAWholeCoin() {
+        JSONArray coins=new JSONArray();JSONObject c=coin("0x01",ADDR_OURS_A,"5",MINIMA);
+        JSONObject state=new JSONObject();state.put("1","[keep]");c.put("state",state);coins.add(c);
+        SweepFlow.Plan plan=SweepFlow.plan(coins,KEYS,new HashSet<>());
+        assertTrue(plan.jobs.get(0).whole);assertEquals("[keep]",Nft.rawStateEntries(plan.jobs.get(0).coins.get(0)).get(0)[1]);
+    }
+
+    @Test public void repeatedSplitsPreserveEveryInputWithoutDuplicatesAndTerminateAtSingles(){
+        JSONArray coins=new JSONArray();for(int i=0;i<9;i++)coins.add(coin("0x"+Integer.toHexString(i+1),ADDR_OURS_A,"1",MINIMA));
+        java.util.List<SweepFlow.Job> jobs=new java.util.ArrayList<>(SweepFlow.plan(coins,KEYS,new HashSet<>()).jobs);
+        for(int i=0;i<jobs.size();){SweepFlow.Job job=jobs.get(i);if(job.coins.size()>1){jobs.remove(i);jobs.addAll(i,SweepFlow.split(job));}else i++;}
+        java.util.Set<String> ids=new HashSet<>();for(SweepFlow.Job job:jobs){assertEquals(1,job.coins.size());assertTrue(ids.add(Nft.str(job.coins.get(0),"coinid")));}
+        assertEquals(9,ids.size());assertEquals(9,jobs.size());
+        org.junit.Assert.assertThrows(IllegalArgumentException.class,()->SweepFlow.split(jobs.get(0)));
+        org.junit.Assert.assertThrows(IllegalArgumentException.class,()->SweepFlow.split(new SweepFlow.Job(true,MINIMA,jobs.get(0).coins,"whole",1)));
+    }
     @Test public void reviewCountsOnlyThisWalletAndPreservesSameNamedAssets() {
         JSONArray coins=new JSONArray();
         coins.add(coin("0x01",ADDR_OURS_A,"5",MINIMA));

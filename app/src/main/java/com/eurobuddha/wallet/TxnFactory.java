@@ -455,6 +455,11 @@ public class TxnFactory {
             throw new IllegalArgumentException("NFT transfer requires the Token descriptor on the input coin");
         }
 
+        return buildWholeTransfer(zCoin,zRecipient,zID);
+    }
+
+    /** Sweep can preserve state on native Minima too. Reuse the exact NFT whole-coin builder. */
+    public BuiltTxn buildWholeTransfer(InputCoin zCoin, String zRecipient, String zID) {
         MiniData recipient = parseAddress(zRecipient);
 
         //Validate the claimed key index actually derives this address (same gate as build()).

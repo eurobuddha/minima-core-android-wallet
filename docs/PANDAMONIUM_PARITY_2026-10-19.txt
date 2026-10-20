@@ -39,3 +39,35 @@ retry parity remain OPEN; this checkpoint does not claim those are repaired.
 Verdict: Approve scoped source checkpoint; wider standalone release review continues.
 Candidate:dist/wallet-0.2.28-candidate.apk
 SHA256:2a527f43fcf946b7b3fdf492de93a6b7bc03ce04ed8ffa4f0eaa126d8c5727b8
+
+minimaWallet0.2.29/code229 — immutable review/native-state Sweep parity (2026-10-20)
+Reused host scripts/pandamonium-sources/wallet/SweepPlanner.java planning,
+state validation, split guards and Locale.ROOT normalization; copied its eight
+planner regressions into existing SweepPlanTest. Kept the standalone nested
+planner and IPC/UI. Reused adapt-pandamonium-wallet-sweep.py's minimal
+buildWholeTransfer extraction and unchanged SweepWholeTransferTest.
+Native Minima carrying state now transfers whole through the existing locally
+signed builder, preserving amount, destination and state. NFT-only caller guards,
+input ownership and descriptor integrity gates remain in place. Deep-copied review
+inputs cannot be changed by cache refresh. Duplicate/incomplete rows and malformed
+state fail before destination review. Added UI error handling for initial/retry
+planning and a real-dialog no-sign/no-node-access regression.
+
+Before repair: 9 of21 focused tests failed, including all eight copied planner
+regressions and the invalid-data dialog. After repair:74debug+74release tests
+passed, zero failures/errors/skips. Offline release assembly/lint passed:
+0errors166warnings. Actual APK com.eurobuddha.wallet/0.2.29/code229 and family signer
+verified; ZIP integrity passed. Synthetic public seeds/in-memory counters only.
+No device, live wallet, seed reset, signing counter or real transaction touched.
+
+Code Review
+Summary: reviewed changed production/test/configuration files and full donor
+planner, transfer builder, parser, input resolver and original UI callers.
+Preserves standalone unlock/reset and locally-built/signed transaction boundary.
+Findings: no new blocking issue within this scoped port. Existing timeout re-sign,
+broad text size rejection, weak confirmation and durable pending/receipt parity
+remain OPEN; this candidate is not a general Sweep recovery approval.
+Verdict: Approve this scoped checkpoint; broader standalone release review continues.
+Candidate: dist/minima-wallet-0.2.29-candidate.apk
+SHA256:e9dd1303debf46143e278b4e3cc0407d8bb4d5c49b00dd46b7a510a1d83e4043
+Not installed or published.

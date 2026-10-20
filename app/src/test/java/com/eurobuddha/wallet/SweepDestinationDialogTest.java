@@ -109,4 +109,24 @@ public class SweepDestinationDialogTest {
         assertFalse(dialog.isShowing());
     }
 
+    @Test public void malformedSweepDataShowsAnErrorBeforeDestinationOrSigning() throws Exception {
+        MainActivity activity=spy(Robolectric.buildActivity(MainActivity.class).get());
+        activity.setTheme(com.eurobuddha.wallet.R.style.Theme_Utxo);
+        doReturn(true).when(activity).isPaired();
+        org.minima.utils.json.JSONArray coins=new org.minima.utils.json.JSONArray();
+        org.minima.utils.json.JSONObject coin=new org.minima.utils.json.JSONObject();
+        coin.put("coinid","0x01");coin.put("address","0xAAAA");coin.put("tokenid","0x00");
+        coin.put("amount","5");coin.put("state","damaged state");coins.add(coin);
+        doReturn(coins).when(activity).coins();doReturn(0).when(activity).keyIndexForAddress(anyString());
+        new SweepFlow(activity).start();
+        AlertDialog dialog=(AlertDialog)ShadowDialog.getLatestDialog();
+        assertNotNull(dialog);assertTrue(dialog.isShowing());
+        String text=visibleText(dialog.getWindow().getDecorView());
+        assertTrue(text,text.contains("Cannot review sweep"));
+        assertTrue(text,text.contains("Refresh the wallet and try again"));
+        assertNull(entry(dialog.getWindow().getDecorView()));
+        verify(activity,never()).vault();verify(activity,never()).factory();verify(activity,never()).node();
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+    }
+
 }
