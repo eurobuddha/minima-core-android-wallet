@@ -70,6 +70,19 @@ public class SettingsView extends BaseView {
             container.addView(outlineButton("Restore keyuses backup…", v -> restore()));
         }
 
+        // --- Addresses (keys) ---------------------------------------------------------------------
+        container.addView(sectionTitle("ADDRESSES"));
+        AddressBook book = act.addressBook();
+        container.addView(kv("Addresses (keys)", book.derivedCount() + " derived / " + book.size()));
+        container.addView(outlineButton("Create a new address", v -> addAddresses(1)));
+        container.addView(outlineButton("Add several addresses…", v -> askAddAddresses()));
+        container.addView(outlineButton("Show node re-sync command", v -> act.showResyncPrompt()));
+        container.addView(hint("Each address is one key derived from your seed, in order — the same set "
+                + "a node derives from this seed with keys:" + book.size() + ". A new address takes a few "
+                + "seconds to derive and is then registered with the node for FUTURE coins only; run the "
+                + "node re-sync to pick up anything already sitting there. Addresses can be added but never "
+                + "removed (removing one would hide its coins). Max " + AddressBook.MAX_SIZE + "."));
+
         // --- Sweep --------------------------------------------------------------------------------
         container.addView(sectionTitle("SWEEP"));
         container.addView(outlineButton("Sweep everything to a new address…",
@@ -172,6 +185,48 @@ public class SettingsView extends BaseView {
      * and enables signing. Over-estimating is safe; under-estimating risks a WOTS reuse, so the copy says
      * so. Twin of the numeric import path.
      */
+    /** Grow the address set by {@code n} after an explicit confirmation (growth is irreversible). */
+    private void addAddresses(final int n) {
+        final int size = act.addressBook().size();
+        if (size + n > AddressBook.MAX_SIZE) {
+            Toast.makeText(act, "Max " + AddressBook.MAX_SIZE + " addresses", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle(n == 1 ? "Create a new address" : "Add " + n + " addresses")
+                .setMessage("This wallet will go from " + size + " to " + (size + n) + " addresses (keys "
+                        + size + " … " + (size + n - 1) + "). They cannot be removed again, and a node "
+                        + "resynced from this seed must be given keys:" + (size + n) + " to see them.\n\n"
+                        + "Deriving takes a few seconds per key — keep the app open.")
+                .setPositiveButton(n == 1 ? "Create" : "Add " + n, (d, w) -> {
+                    act.addKeys(n);
+                    refresh();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void askAddAddresses() {
+        final EditText field = new EditText(act);
+        field.setInputType(InputType.TYPE_CLASS_NUMBER);
+        field.setHint("how many to add");
+        field.setTextColor(Design.text());
+        field.setHintTextColor(Design.dim());
+        new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Add addresses")
+                .setMessage("You have " + act.addressBook().size() + " addresses. How many more?")
+                .setView(wrap(field))
+                .setPositiveButton("Next", (d, w) -> {
+                    int n;
+                    try { n = Integer.parseInt(field.getText().toString().trim()); }
+                    catch (NumberFormatException e) { n = 0; }
+                    if (n < 1) { Toast.makeText(act, "Enter a whole number of 1 or more", Toast.LENGTH_SHORT).show(); return; }
+                    addAddresses(n);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
     private void setUsesManually() {
         final EditText field = new EditText(act);
         field.setInputType(InputType.TYPE_CLASS_NUMBER);
@@ -732,7 +787,7 @@ public class SettingsView extends BaseView {
     /** Step 4 — scripts address:<ours> (is our RETURN SIGNEDBY script TRACKED / relevant?). */
     private void diagScripts(final NodeLink node, final String addr0x) {
         final String cmd = "scripts";
-        diagLine("[4] " + cmd + " (cross-check ALL " + AddressBook.SIZE + " base addresses)");
+        diagLine("[4] " + cmd + " (cross-check ALL " + act.addressBook().size() + " base addresses)");
         node.raw(cmd, new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 diagLine("  status: " + json.optBoolean("status", false));
@@ -754,7 +809,7 @@ public class SettingsView extends BaseView {
                     if (tracked.contains(book.addr0x(i))) hits++;
                     else missing.append(missing.length() == 0 ? "" : ", ").append(i);
                 }
-                diagLine("  derived locally : " + derived + " / " + AddressBook.SIZE);
+                diagLine("  derived locally : " + derived + " / " + book.size());
                 diagLine("  tracked on node : " + hits + " / " + derived);
                 if (missing.length() > 0) {
                     diagLine("  NOT tracked (key index): " + missing);
@@ -871,7 +926,7 @@ public class SettingsView extends BaseView {
      * The exact WHOLE-NODE re-sync command. Shown as copyable text ONLY — the wallet is non-admin and
      * MUST NEVER issue this (it re-syncs the entire node from the public MegaMMR). Display-only.
      */
-    private static final String MEGAMMR_RESYNC_CMD =
+    static final String MEGAMMR_RESYNC_CMD =
             "megammrsync action:resync host:megammr.minima.global:9001";
 
     /**

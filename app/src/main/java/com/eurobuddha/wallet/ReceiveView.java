@@ -55,7 +55,7 @@ public class ReceiveView extends BaseView {
         AddressBook book = act.addressBook();
         int avail = book == null ? 0 : book.derivedCount();
         if (avail <= 1) {
-            Toast.makeText(act, "Deriving your " + AddressBook.SIZE + " addresses… "
+            Toast.makeText(act, "Deriving your " + (book == null ? AddressBook.DEFAULT_SIZE : book.size()) + " addresses… "
                     + avail + " ready so far", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -81,7 +81,7 @@ public class ReceiveView extends BaseView {
             qr.setImageBitmap(null);
             return;
         }
-        label.setText("Your Minima address — #" + (mIndex + 1) + " of " + AddressBook.SIZE);
+        label.setText("Your Minima address — #" + (mIndex + 1) + " of " + act.addressBook().size());
         address.setText(addr);
         renderQr(addr);
     }

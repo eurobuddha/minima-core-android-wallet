@@ -267,12 +267,16 @@ public class MainActivity extends AppCompatActivity {
         final EditText p2 = password();
         col.addView(p2);
 
+        final EditText keys = keysField(col);
+
         col.addView(primary("Continue", v -> {
             String a = p1.getText().toString(), b = p2.getText().toString();
             if (a.length() < 8) { toast("Passphrase too short (min 8)"); return; }
             if (!a.equals(b)) { toast("Passphrases do not match"); return; }
+            int n = parseKeys(keys);
+            if (n < 0) return;
             // M2: do NOT complete setup yet — require the user to prove they backed up the seed.
-            onboardVerifySeed(phrase, a);
+            onboardVerifySeed(phrase, a, n);
         }));
     }
 
@@ -281,7 +285,7 @@ public class MainActivity extends AppCompatActivity {
      * funded), the user must re-enter 3 randomly chosen words from the phrase — proving they actually
      * wrote it down. Only on success do we {@link SeedVault#createNew} and enter the wallet.
      */
-    private void onboardVerifySeed(final String phrase, final String passphrase) {
+    private void onboardVerifySeed(final String phrase, final String passphrase, final int keys) {
         final String[] words = phrase.trim().split("\\s+");
 
         // Pick 3 distinct random word positions (ascending for a tidy prompt order).
@@ -329,6 +333,7 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
             }
+            AddressBook.setPendingKeyCount(this, keys);
             mVault.createNew(phrase, passphrase);
             mSession.touch();
             startMain();
@@ -398,6 +403,8 @@ public class MainActivity extends AppCompatActivity {
                 + "total); under-estimating reuses a key and can LOSE your funds. If you are unsure, enter a "
                 + "comfortable over-estimate. Enter 0 only if this seed has NEVER signed anywhere."));
 
+        final EditText keys = keysField(col);
+
         col.addView(primary("Import wallet", v -> {
             String ph = phrase.getText().toString().trim();
             if (ph.length() < 16) { toast("Seed must be at least 16 characters"); return; }
@@ -421,7 +428,9 @@ public class MainActivity extends AppCompatActivity {
                 toast("That exceeds this key's lifetime of " + Util.WOTS_MAX_USES + " signatures");
                 return;
             }
-            confirmImport(ph, a, usedN);
+            int n = parseKeys(keys);
+            if (n < 0) return;
+            confirmImport(ph, a, usedN, n);
         }));
     }
 
@@ -431,7 +440,7 @@ public class MainActivity extends AppCompatActivity {
      * funds. On confirm, {@link SeedVault#importSeed(String, String, int)} raises the counter (MAX-safe)
      * and stores the vault trusted.
      */
-    private void confirmImport(String zPhrase, String zPassphrase, int zUsed) {
+    private void confirmImport(String zPhrase, String zPassphrase, int zUsed, int zKeys) {
         String msg = zUsed == 0
                 ? "You entered 0 signatures used.\n\nOnly correct if this seed has NEVER signed a "
                     + "transaction on ANY device or wallet. If it has, importing at 0 will reuse one-time "
@@ -444,12 +453,46 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle("Confirm signatures used")
                 .setMessage(msg)
                 .setPositiveButton("Import", (d, w) -> {
+                    AddressBook.setPendingKeyCount(this, zKeys);
                     mVault.importSeed(zPhrase, zPassphrase, zUsed);
                     mSession.touch();
                     startMain();
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    /**
+     * "NUMBER OF ADDRESSES" field shared by create + import. Must equal the {@code keys:} a node is
+     * given when it resyncs this seed, or the two wallets disagree on which addresses exist.
+     */
+    private EditText keysField(LinearLayout col) {
+        col.addView(label("NUMBER OF ADDRESSES (KEYS)"));
+        EditText e = new EditText(this);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER);
+        e.setText(String.valueOf(AddressBook.DEFAULT_SIZE));
+        e.setTextColor(Design.text());
+        e.setHintTextColor(Design.dim());
+        e.setHint(String.valueOf(AddressBook.DEFAULT_SIZE));
+        e.setBackgroundColor(Design.surface());
+        e.setPadding(dp(12), dp(12), dp(12), dp(12));
+        col.addView(e);
+        col.addView(body("How many receive addresses (keys) to derive from this seed. A Minima node "
+                + "derives " + AddressBook.DEFAULT_SIZE + " by default — use the same number you would "
+                + "give a node as keys:N when resyncing this seed, or coins at the extra addresses will be "
+                + "invisible to one side. Each key takes a few seconds to derive on this phone. You can add "
+                + "more later in Settings, but never remove any (1 … " + AddressBook.MAX_SIZE + ")."));
+        return e;
+    }
+
+    /** Parse + validate the keys field; -1 (after a toast) when unusable. */
+    private int parseKeys(EditText zField) {
+        String s = zField.getText().toString().trim();
+        if (s.isEmpty()) { toast("Enter how many addresses to derive (" + AddressBook.DEFAULT_SIZE + " is the node default)"); return -1; }
+        int n;
+        try { n = Integer.parseInt(s); } catch (NumberFormatException nfe) { toast("Number of addresses must be a whole number"); return -1; }
+        if (n < 1 || n > AddressBook.MAX_SIZE) { toast("Number of addresses must be 1 … " + AddressBook.MAX_SIZE); return -1; }
+        return n;
     }
 
     // =============================================================================================
@@ -538,16 +581,70 @@ public class MainActivity extends AppCompatActivity {
 
         mNode = new NodeLink(this, this::onPaired);
 
-        // Derive any missing base addresses (all 64 on first run — expensive) off the UI thread,
-        // then re-track + reload so coins at ALL our addresses show up.
-        if (!mBook.isComplete()) {
-            mBook.setDeriveListener(n -> runOnUiThread(this::updateStatusBanner));
-            new Thread(() -> {
-                mBook.deriveMissing();
-                runOnUiThread(this::onAddressBookReady);
-            }, "addressbook-derive").start();
-        }
+        mBook.setDeriveListener(n -> runOnUiThread(this::updateStatusBanner));
+        startDeriveIfNeeded();
         updateStatusBanner();
+    }
+
+    private boolean mDeriving = false;
+
+    /**
+     * Derive any missing base addresses (all of them on first run — expensive) off the UI thread,
+     * then re-track + reload so coins at ALL our addresses show up. One derive thread at a time; a
+     * size grow while it runs is picked up by the running loop.
+     */
+    private void startDeriveIfNeeded() {
+        if (mDeriving || mBook.isComplete()) return;
+        mDeriving = true;
+        new Thread(() -> {
+            final int n = mBook.deriveMissing();
+            runOnUiThread(() -> { mDeriving = false; onAddressBookReady(n); });
+        }, "addressbook-derive").start();
+    }
+
+    /** Settings: grow the address set by {@code zCount} new keys and derive + register them. */
+    public void addKeys(int zCount) {
+        mBook.setSize(mBook.size() + zCount);
+        updateStatusBanner();
+        startDeriveIfNeeded();
+        refreshCurrent();
+    }
+
+    /**
+     * Newly derived keys are only tracked from NOW — the node does not back-fill coins already at
+     * those addresses. Tell the user to run the MegaMMR resync on their node (display + copy only;
+     * the wallet never runs admin commands).
+     */
+    public void showResyncPrompt() {
+        TextView cmd = new TextView(this);
+        cmd.setText(SettingsView.MEGAMMR_RESYNC_CMD);
+        cmd.setTypeface(Typeface.MONOSPACE);
+        cmd.setTextSize(12f);
+        cmd.setTextColor(Design.text());
+        cmd.setBackgroundColor(Design.surface());
+        cmd.setTextIsSelectable(true);
+        cmd.setPadding(dp(14), dp(12), dp(14), dp(12));
+        FrameLayout wrap = new FrameLayout(this);
+        wrap.setPadding(dp(20), dp(8), dp(20), 0);
+        wrap.addView(cmd);
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Resync your node")
+                .setMessage("Your " + mBook.size() + " addresses are registered with the node, but a node "
+                        + "only indexes coins that arrive AFTER an address is registered. If this seed "
+                        + "already holds funds (an imported seed, or coins sent before now), run this MMR "
+                        + "resync on your host node so it re-scans the chain for every address:")
+                .setView(wrap)
+                .setPositiveButton("Copy command", (d, w) -> {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                            getSystemService(CLIPBOARD_SERVICE);
+                    if (cm != null) {
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText(
+                                "Minima megammrsync command", SettingsView.MEGAMMR_RESYNC_CMD));
+                        toast("Copied");
+                    }
+                })
+                .setNegativeButton("Close", null)
+                .show();
     }
 
     /**
@@ -556,28 +653,30 @@ public class MainActivity extends AppCompatActivity {
      */
     private void updateStatusBanner() {
         if (mStatusBanner == null) return;
-        int derived = mBook.derivedCount();
-        if (derived < AddressBook.SIZE) {
-            mStatusBanner.setText("Deriving wallet addresses… " + derived + " of " + AddressBook.SIZE
+        int derived = mBook.derivedCount(), size = mBook.size();
+        if (derived < size) {
+            mStatusBanner.setText("Deriving wallet addresses… " + derived + " of " + size
                     + " — keep the app open");
             mStatusBanner.setVisibility(View.VISIBLE);
-        } else if (mPaired && mTrackOk < AddressBook.SIZE) {
-            mStatusBanner.setText("Registering addresses with the node… " + mTrackOk + " of " + AddressBook.SIZE);
+        } else if (mPaired && mTrackOk < size) {
+            mStatusBanner.setText("Registering addresses with the node… " + mTrackOk + " of " + size);
             mStatusBanner.setVisibility(View.VISIBLE);
         } else {
             mStatusBanner.setVisibility(View.GONE);
         }
     }
 
-    /** All 64 base addresses are now known: track them all and re-pull coins. */
-    private void onAddressBookReady() {
+    /** A derive run finished: track every address and re-pull coins; prompt a resync if keys are new. */
+    private void onAddressBookReady(int zDerivedNow) {
         if (isDestroyed()) return;
         updateStatusBanner();
+        if (!mBook.isComplete()) { startDeriveIfNeeded(); return; }   // grown while deriving
         if (mPaired && mNode != null) {
             trackScripts(0);
             loadEverything();
         }
         refreshCurrent();
+        if (zDerivedNow > 0) showResyncPrompt();
     }
 
     private void buildUi() {
